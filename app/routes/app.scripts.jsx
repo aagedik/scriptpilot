@@ -1,10 +1,9 @@
 import { json } from "@remix-run/node";
-import { useLoaderData, useFetcher } from "@remix-run/react";
+import { useLoaderData, useFetcher, useRouteError, isRouteErrorResponse } from "@remix-run/react";
 import {
   Page,
   Layout,
   Card,
-  DataTable,
   Button,
   Badge,
   Text,
@@ -12,15 +11,27 @@ import {
   InlineStack,
   TextField,
   Select,
-  FormLayout,
   Link,
   Box,
   Banner,
 } from "@shopify/polaris";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import { TitleBar, useAppBridge } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
+import {
+  SCRIPT_PLATFORMS,
+  SCRIPT_PLATFORM_VALUES,
+  DEVICE_OPTIONS,
+  PAGE_OPTIONS,
+  PLACEMENT_OPTIONS,
+  DEVICE_OPTION_VALUES,
+  PAGE_OPTION_VALUES,
+  PLACEMENT_OPTION_VALUES,
+  transformPlatformInput,
+  defaultPlacementForPlatform,
+  getPlatformById,
+} from "../utils/script-platforms";
 
 const shouldLog = typeof process !== "undefined" && process.env.NODE_ENV !== "production";
 const debugLog = (...args) => {
@@ -29,9 +40,93 @@ const debugLog = (...args) => {
   }
 };
 
+const AUTH_DEBUG_PREFIX = "[auth-debug][app-scripts]";
+const serializeHeaders = (headers) => {
+  if (!headers) return null;
+  try {
+    return Array.from(headers.entries());
+  } catch (error) {
+    return `unserializable: ${error instanceof Error ? error.message : String(error)}`;
+  }
+};
+
+const logAuthDebug = (stage, payload) => {
+  const message = `${AUTH_DEBUG_PREFIX}[${stage}]`;
+  try {
+    console.info(message, JSON.stringify(payload));
+  } catch (error) {
+    console.info(message, payload);
+  }
+};
+
+const PLATFORMS = SCRIPT_PLATFORMS;
+const DEFAULT_FORM_STATE = Object.freeze({
+  code: "",
+  placement: "body_end",
+  deviceTarget: "all",
+  pageTarget: "all_pages",
+  customUrlRules: "",
+});
+
 export const loader = async ({ request }) => {
-  const { session } = await authenticate.admin(request);
-  const shop = session.shop;
+  const url = new URL(request.url);
+  const hostParam = url.searchParams.get("host");
+  const shopParam = url.searchParams.get("shop");
+  const authHeader = request.headers.get("Authorization") || request.headers.get("authorization") || null;
+
+  logAuthDebug("loader:start", {
+    url: url.toString(),
+    pathname: url.pathname,
+    search: url.search,
+    hostParam: hostParam || null,
+    shopParam: shopParam || null,
+    hasAuthHeader: Boolean(authHeader),
+  });
+
+  let session;
+  let admin;
+  let headers;
+  try {
+    const auth = await authenticate.admin(request);
+    session = auth?.session;
+    admin = auth?.admin;
+    headers = auth?.headers;
+    const restKeys = auth ? Object.keys(auth).filter((key) => !["session", "admin", "headers"].includes(key)) : [];
+
+    logAuthDebug("loader:success", {
+      sessionShop: session?.shop ?? null,
+      sessionId: session?.id ?? null,
+      sessionIsOnline: session?.isOnline ?? null,
+      extraKeys: restKeys,
+      returnedHeaders: serializeHeaders(headers),
+    });
+  } catch (error) {
+    if (error instanceof Response) {
+      logAuthDebug("loader:redirect", {
+        status: error.status,
+        statusText: error.statusText,
+        location: error.headers.get("Location"),
+        headers: serializeHeaders(error.headers),
+      });
+      throw error;
+    }
+
+    logAuthDebug("loader:error", {
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : null,
+    });
+    throw error;
+  }
+
+  const shop = session?.shop || shopParam;
+
+  if (!shop) {
+    logAuthDebug("loader:no-shop", {
+      reason: "Missing shop after authentication",
+      hostParam: hostParam || null,
+    });
+    return json({ error: "Unable to resolve shop context" }, headers ? { status: 400, headers } : { status: 400 });
+  }
 
   const shopData = await prisma.shop.findUnique({
     where: { shopifyDomain: shop },
@@ -56,6 +151,40 @@ export const loader = async ({ request }) => {
     ? `https://${shop}/admin/themes/current/editor?context=apps&activateAppId=${process.env.SHOPIFY_API_KEY}`
     : null;
 
+  let themeExtensionStatus = "Unknown";
+  let themeExtensionConnected = false;
+
+  try {
+    const extensions = await admin.rest.resources.Extension.all({ session });
+    const scriptPilotExtension = extensions.data.find(
+      (ext) =>
+        ext.title?.toLowerCase().includes("scriptpilot") ||
+        ext.type === "theme_app_extension"
+    );
+
+    if (scriptPilotExtension) {
+      const themes = await admin.rest.resources.Theme.all({ session });
+      const mainTheme = themes.data.find((theme) => theme.role === "main");
+
+      if (mainTheme) {
+        themeExtensionStatus = "Connected";
+        themeExtensionConnected = true;
+      } else {
+        themeExtensionStatus = "Missing on published theme";
+      }
+    } else {
+      themeExtensionStatus = "Not Installed";
+    }
+  } catch (error) {
+    themeExtensionStatus = "Detection Failed";
+    console.error("Failed to detect theme extension status:", error);
+  }
+
+  const installedPlatformIds = new Set(scripts.map((script) => script.scriptType));
+  const hasAnalyticsScript = installedPlatformIds.has("google_analytics") || installedPlatformIds.has("google_tag_manager");
+  const hasMetaPixel = installedPlatformIds.has("meta_pixel");
+  const hasVerification = installedPlatformIds.has("google_search_console");
+
   if (!shopData) {
     return json({
       scripts,
@@ -64,7 +193,17 @@ export const loader = async ({ request }) => {
       maxScripts,
       canAddMore,
       themeEditorUrl,
-    });
+      themeExtension: {
+        status: themeExtensionStatus,
+        connected: themeExtensionConnected,
+        editorUrl: themeEditorUrl,
+      },
+      onboarding: {
+        hasAnalyticsScript,
+        hasMetaPixel,
+        hasVerification,
+      },
+    }, headers ? { headers } : {});
   }
 
   return json({
@@ -74,7 +213,17 @@ export const loader = async ({ request }) => {
     maxScripts,
     canAddMore,
     themeEditorUrl,
-  });
+    themeExtension: {
+      status: themeExtensionStatus,
+      connected: themeExtensionConnected,
+      editorUrl: themeEditorUrl,
+    },
+    onboarding: {
+      hasAnalyticsScript,
+      hasMetaPixel,
+      hasVerification,
+    },
+  }, headers ? { headers } : {});
 };
 
 // Metafields sync function - all scripts to single body_scripts for stability
@@ -104,435 +253,443 @@ async function syncScriptsToMetafields(shopId, session) {
       }
     });
 
-    // Sync to metafield
-    if (combinedHtml.trim().length > 0) {
-      const response = await fetch(`https://${session.shop}/admin/api/2025-01/metafields.json`, {
+    const baseUrl = `https://${session.shop}/admin/api/2025-01`;
+    const headers = {
+      'X-Shopify-Access-Token': session.accessToken,
+      'Content-Type': 'application/json',
+    };
+
+    const existingResponse = await fetch(`${baseUrl}/metafields.json?namespace=scriptpilot&key=body_scripts`, {
+      method: 'GET',
+      headers,
+    });
+
+    let existingMetafield = null;
+    if (existingResponse.ok) {
+      const existingJson = await existingResponse.json();
+      existingMetafield = existingJson?.metafields?.[0] ?? null;
+    } else {
+      console.error('Failed to read existing body_scripts metafield:', await existingResponse.text());
+    }
+
+    const trimmedHtml = combinedHtml.trim();
+
+    if (trimmedHtml.length === 0) {
+      if (existingMetafield) {
+        const deleteResponse = await fetch(`${baseUrl}/metafields/${existingMetafield.id}.json`, {
+          method: 'DELETE',
+          headers,
+        });
+        if (!deleteResponse.ok) {
+          console.error('Failed to delete body_scripts metafield:', await deleteResponse.text());
+        } else {
+          debugLog('body_scripts metafield removed (no active scripts)');
+        }
+      }
+      return;
+    }
+
+    if (existingMetafield) {
+      const updateResponse = await fetch(`${baseUrl}/metafields/${existingMetafield.id}.json`, {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify({
+          metafield: {
+            id: existingMetafield.id,
+            value: trimmedHtml,
+            type: 'multi_line_text_field',
+          },
+        }),
+      });
+      if (!updateResponse.ok) {
+        console.error('Failed to update body_scripts metafield:', await updateResponse.text());
+      } else {
+        debugLog('body_scripts metafield updated (length:', trimmedHtml.length, ')');
+      }
+    } else {
+      const createResponse = await fetch(`${baseUrl}/metafields.json`, {
         method: 'POST',
-        headers: {
-          'X-Shopify-Access-Token': session.accessToken,
-          'Content-Type': 'application/json'
-        },
+        headers,
         body: JSON.stringify({
           metafield: {
             namespace: 'scriptpilot',
             key: 'body_scripts',
-            value: combinedHtml,
+            value: trimmedHtml,
             type: 'multi_line_text_field',
-            owner_resource: 'shop'
-          }
-        })
+            owner_resource: 'shop',
+          },
+        }),
       });
-      if (!response.ok) {
-        console.error('Failed to sync body_scripts:', await response.text());
+      if (!createResponse.ok) {
+        console.error('Failed to create body_scripts metafield:', await createResponse.text());
       } else {
-        debugLog('Scripts synced to body_scripts (length:', combinedHtml.length, ')');
+        debugLog('body_scripts metafield created (length:', trimmedHtml.length, ')');
       }
     }
-
-    debugLog('All scripts synced to metafields successfully');
   } catch (error) {
     console.error('Error syncing to metafields:', error);
   }
 }
-
 export const action = async ({ request }) => {
-  const { session } = await authenticate.admin(request);
-  const shop = session.shop;
+  const url = new URL(request.url);
+  const hostParam = url.searchParams.get("host");
+  const shopParam = url.searchParams.get("shop");
+  const authHeader = request.headers.get("Authorization") || request.headers.get("authorization") || null;
+
+  logAuthDebug("action:start", {
+    url: url.toString(),
+    pathname: url.pathname,
+    search: url.search,
+    hostParam: hostParam || null,
+    shopParam: shopParam || null,
+    method: request.method,
+    hasAuthHeader: Boolean(authHeader),
+  });
+
+  let session;
+  let headers;
+  try {
+    const auth = await authenticate.admin(request);
+    session = auth?.session;
+    headers = auth?.headers;
+    const restKeys = auth ? Object.keys(auth).filter((key) => !["session", "headers"].includes(key)) : [];
+
+    logAuthDebug("action:success", {
+      sessionShop: session?.shop ?? null,
+      sessionId: session?.id ?? null,
+      extraKeys: restKeys,
+      returnedHeaders: serializeHeaders(headers),
+    });
+  } catch (error) {
+    if (error instanceof Response) {
+      logAuthDebug("action:redirect", {
+        status: error.status,
+        statusText: error.statusText,
+        location: error.headers.get("Location"),
+        headers: serializeHeaders(error.headers),
+      });
+      throw error;
+    }
+
+    logAuthDebug("action:error", {
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : null,
+    });
+    throw error;
+  }
+
+  const respond = (payload, init = {}) =>
+    headers ? json(payload, { ...init, headers }) : json(payload, init);
+
+  const sessionShop = session?.shop || shopParam;
+  if (!sessionShop) {
+    logAuthDebug("action:no-shop", {
+      reason: "Missing shop after authentication",
+      hostParam: hostParam || null,
+    });
+    return respond({ error: "Unable to resolve shop context" }, { status: 400 });
+  }
+
   const formData = await request.formData();
   const intent = formData.get("intent");
   const scriptId = formData.get("scriptId");
 
-  // Get shop data for billing checks
-  const shopData = await prisma.shop.findUnique({
-    where: { shopifyDomain: shop },
-    include: { scripts: true }
+  logAuthDebug("action:form", {
+    intent: intent || null,
+    scriptId: scriptId || null,
+    formHasHost: formData.has("host"),
+    formHasShop: formData.has("shop"),
   });
 
-  const currentPlan = shopData?.plan || 'free';
+  const shopData = await prisma.shop.findUnique({
+    where: { shopifyDomain: sessionShop },
+    include: { scripts: true },
+  });
+
+  const currentPlan = shopData?.plan || "free";
   const planLimits = {
     free: 1,
     basic: 5,
-    pro: Infinity
+    pro: Infinity,
   };
   const maxScripts = planLimits[currentPlan] || 1;
-  const activeScriptCount = shopData?.scripts.filter(s => s.status).length || 0;
+  const activeScriptCount = shopData?.scripts.filter((s) => s.status).length || 0;
 
-  if (intent === "save") {
-    const platform = formData.get("platform");
-    const code = formData.get("code");
-    const placement = formData.get("placement");
-    const deviceTarget = formData.get("deviceTarget");
-    const pageTarget = formData.get("pageTarget");
-    const customUrlRules = formData.get("customUrlRules");
+  const normalizePlacement = (value, platformId) => {
+    if (!PLACEMENT_OPTION_VALUES.has(value)) {
+      return defaultPlacementForPlatform(platformId);
+    }
+    return value;
+  };
 
-    // Check if user can add more scripts
+  const normalizeDeviceTarget = (value) => (DEVICE_OPTION_VALUES.has(value) ? value : "all");
+  const normalizePageTarget = (value) => (PAGE_OPTION_VALUES.has(value) ? value : "all_pages");
+
+  const commitScript = async ({
+    platformId,
+    code,
+    placement,
+    deviceTarget,
+    pageTarget,
+    customUrlRules,
+  }) => {
     const existingScript = await prisma.script.findFirst({
-      where: { scriptType: platform, shop: { shopifyDomain: shop } }
+      where: { scriptType: platformId, shop: { shopifyDomain: sessionShop } },
     });
 
-    if (!existingScript && activeScriptCount >= maxScripts) {
-      return json({ 
-        error: `Plan limit reached. Your ${currentPlan} plan allows ${maxScripts === Infinity ? 'unlimited' : maxScripts} active scripts. Upgrade to add more.` 
-      }, { status: 400 });
+    const nextActiveCount = existingScript?.status
+      ? activeScriptCount
+      : activeScriptCount + 1;
+
+    if (!existingScript && nextActiveCount > maxScripts) {
+      return respond(
+        {
+          error: `Plan limit reached. Your ${currentPlan} plan allows ${
+            maxScripts === Infinity ? "unlimited" : maxScripts
+          } active scripts. Upgrade to add more.`,
+        },
+        { status: 400 }
+      );
     }
 
-    let scriptCode = code;
-    const platformData = PLATFORMS.find(p => p.id === platform);
-    if (platformData && platformData.template) {
-      scriptCode = platformData.template(code);
-    }
-
-    // Update shop's last activity
+    const platform = getPlatformById(platformId);
     const shopRecord = await prisma.shop.findUnique({
-      where: { shopifyDomain: shop }
+      where: { shopifyDomain: sessionShop },
     });
-    await prisma.shop.update({
-      where: { id: shopRecord.id },
-      data: { lastActivityAt: new Date() }
-    });
+
+    if (!shopRecord) {
+      throw new Response("Shop record not found", { status: 404 });
+    }
+
+    const baseData = {
+      name: platform?.name || platformId,
+      description: platform?.description,
+      code,
+      placement,
+      scriptType: platformId,
+      deviceTarget,
+      pageTarget,
+      customUrlRules,
+      status: true,
+    };
 
     if (existingScript) {
       await prisma.script.update({
         where: { id: existingScript.id },
-        data: {
-          name: platformData?.name || platform,
-          description: platformData?.description,
-          code: scriptCode,
-          placement,
-          scriptType: platform,
-          deviceTarget,
-          pageTarget,
-          customUrlRules,
-          status: true
-        }
+        data: baseData,
       });
     } else {
       await prisma.script.create({
         data: {
+          ...baseData,
           shopId: shopRecord.id,
-          name: platformData?.name || platform,
-          description: platformData?.description,
-          code: scriptCode,
-          placement,
-          scriptType: platform,
-          deviceTarget,
-          pageTarget,
-          customUrlRules,
-          status: true
-        }
+        },
       });
     }
 
-    // Sync to metafields
-    await syncScriptsToMetafields(shopRecord.id, session);
+    await prisma.shop.update({
+      where: { id: shopRecord.id },
+      data: { lastActivityAt: new Date() },
+    });
 
-    // Log activity
     await prisma.activityLog.create({
       data: {
         shopId: shopRecord.id,
-        action: existingScript ? 'script_updated' : 'script_created',
-        scriptName: platformData?.name || platform,
-        details: existingScript ? 'Script updated successfully' : 'Script created successfully'
+        action: existingScript ? "script_updated" : "script_created",
+        scriptName: platform?.name || platformId,
+        details: existingScript ? "Script updated successfully" : "Script created successfully",
+      },
+    });
+
+    await syncScriptsToMetafields(shopRecord.id, session);
+
+    return respond({
+      success: true,
+      scriptName: platform?.name || platformId,
+    });
+  };
+
+  switch (intent) {
+    case "create_script": {
+      const platformId = formData.get("platform");
+      if (!SCRIPT_PLATFORM_VALUES.has(platformId)) {
+        return respond({ error: "Choose a supported script platform." }, { status: 400 });
       }
-    });
 
-    return json({ 
-      success: true, 
-      scriptName: platformData?.name || platform,
-      message: existingScript ? 'Script updated successfully' : 'Script created successfully'
-    });
-  }
+      const rawCode = formData.get("code") || "";
+      const placement = normalizePlacement(formData.get("placement"), platformId);
+      const deviceTarget = normalizeDeviceTarget(formData.get("deviceTarget"));
+      const pageTarget = normalizePageTarget(formData.get("pageTarget"));
+      const customUrlRules = formData.get("customUrlRules") || "";
 
-  if (intent === "toggle") {
-    const script = await prisma.script.findUnique({
-      where: { id: scriptId }
-    });
+      const transformed = transformPlatformInput(platformId, rawCode);
+      if (!transformed.ok) {
+        return respond({ error: transformed.error }, { status: 400 });
+      }
 
-    if (script) {
+      return commitScript({
+        platformId,
+        code: transformed.data,
+        placement,
+        deviceTarget,
+        pageTarget,
+        customUrlRules,
+      });
+    }
+    case "update_script": {
+      const platformId = formData.get("scriptType") || formData.get("platform");
+      if (!SCRIPT_PLATFORM_VALUES.has(platformId)) {
+        return respond({ error: "Choose a supported script platform." }, { status: 400 });
+      }
+
+      const rawCode = formData.get("code") || "";
+      const placement = normalizePlacement(formData.get("placement"), platformId);
+      const deviceTarget = normalizeDeviceTarget(formData.get("deviceTarget"));
+      const pageTarget = normalizePageTarget(formData.get("pageTarget"));
+      const customUrlRules = formData.get("customUrlRules") || "";
+
+      const transformed = transformPlatformInput(platformId, rawCode);
+      if (!transformed.ok) {
+        return respond({ error: transformed.error }, { status: 400 });
+      }
+
+      return commitScript({
+        platformId,
+        code: transformed.data,
+        placement,
+        deviceTarget,
+        pageTarget,
+        customUrlRules,
+      });
+    }
+    case "toggle_script": {
+      const script = await prisma.script.findUnique({
+        where: { id: scriptId },
+      });
+
+      if (!script) {
+        return respond({ error: "Script not found" }, { status: 404 });
+      }
+
       const newStatus = !script.status;
-      
-      // Check if enabling would exceed plan limit
-      if (newStatus && activeScriptCount >= maxScripts) {
-        return json({ 
-          error: `Plan limit reached. Your ${currentPlan} plan allows ${maxScripts === Infinity ? 'unlimited' : maxScripts} active scripts. Upgrade to enable more.` 
-        }, { status: 400 });
+      if (newStatus) {
+        const nextActive = activeScriptCount + (script.status ? 0 : 1);
+        if (nextActive > maxScripts) {
+          return respond(
+            {
+              error: `Plan limit reached. Your ${currentPlan} plan allows ${
+                maxScripts === Infinity ? "unlimited" : maxScripts
+              } active scripts. Upgrade to enable more.`,
+            },
+            { status: 400 }
+          );
+        }
       }
 
       await prisma.script.update({
         where: { id: scriptId },
-        data: { status: newStatus }
+        data: { status: newStatus },
       });
 
-      // Sync to metafields
       const shopRecord = await prisma.shop.findUnique({
-        where: { shopifyDomain: shop }
+        where: { shopifyDomain: sessionShop },
       });
-      await syncScriptsToMetafields(shopRecord.id, session);
 
-      return json({ success: true });
+      if (!shopRecord) {
+        throw new Response("Shop record not found", { status: 404 });
+      }
+
+      await prisma.activityLog.create({
+        data: {
+          shopId: shopRecord.id,
+          action: newStatus ? "script_enabled" : "script_disabled",
+          scriptName: script.name,
+          details: newStatus ? "Script enabled" : "Script disabled",
+        },
+      });
+
+      await prisma.shop.update({
+        where: { id: shopRecord.id },
+        data: { lastActivityAt: new Date() },
+      });
+
+      if (newStatus || script.status) {
+        await syncScriptsToMetafields(shopRecord.id, session);
+      }
+
+      return respond({ success: true });
     }
+    case "delete_script": {
+      if (!scriptId) {
+        return respond({ error: "Missing script identifier." }, { status: 400 });
+      }
+
+      await prisma.script.delete({
+        where: { id: scriptId },
+      });
+
+      const shopRecord = await prisma.shop.findUnique({
+        where: { shopifyDomain: sessionShop },
+      });
+
+      if (shopRecord) {
+        await prisma.activityLog.create({
+          data: {
+            shopId: shopRecord.id,
+            action: "script_deleted",
+            scriptName: scriptId,
+            details: "Script deleted by merchant",
+          },
+        });
+        await syncScriptsToMetafields(shopRecord.id, session);
+      }
+
+      return respond({ success: true });
+    }
+    default:
+      return respond({ error: "Unsupported action." }, { status: 400 });
   }
-
-  if (intent === "delete") {
-    await prisma.script.delete({
-      where: { id: scriptId }
-    });
-
-    // Sync to metafields
-    const shopRecord = await prisma.shop.findUnique({
-      where: { shopifyDomain: shop }
-    });
-    await syncScriptsToMetafields(shopRecord.id, session);
-
-    return json({ success: true });
-  }
-
-  return json({ error: "Invalid intent" }, { status: 400 });
 };
 
-const PLATFORMS = [
-  {
-    id: 'meta_pixel',
-    name: 'Meta Pixel',
-    description: 'Install Meta Pixel (Facebook Pixel) to measure Shopify conversions and retarget audiences.',
-    icon: '📱',
-    category: 'Advertising',
-    cta: 'Add Meta Pixel',
-    placeholder: 'Enter your Meta Pixel ID',
-    helper: 'Find your Meta Pixel ID in Meta Events Manager > Data Sources.',
-    helpLink: 'https://www.facebook.com/business/help/952192354843755',
-    demoCode: '123456789012345',
-    template: (code) => `<!-- Meta Pixel -->
-<script>
-!function(f,b,e,v,n,t,s)
-{if(f.fbq)return;n=f.fbq=function(){n.callMethod?
-n.callMethod.apply(n,arguments):n.queue.push(arguments)};
-if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
-n.queue=[];t=b.createElement(e);t.async=!0;
-t.src=v;s=b.getElementsByTagName(e)[0];
-s.parentNode.insertBefore(t,s)}(window, document,'script',
-'https://connect.facebook.net/en_US/fbevents.js');
-fbq('init', '${code}');
-fbq('track', 'PageView');
-</script>
-<noscript><img height="1" width="1" style="display:none"
-src="https://www.facebook.com/tr?id=${code}&ev=PageView&noscript=1"/></noscript>`
-  },
-  {
-    id: 'google_analytics',
-    name: 'Google Analytics',
-    description: 'Connect Google Analytics to understand traffic, conversion funnels, and ecommerce revenue.',
-    icon: '📊',
-    category: 'Analytics',
-    cta: 'Connect Google Analytics',
-    placeholder: 'Enter your Google Measurement ID (G-XXXXXXXXXX)',
-    helper: 'Get your Measurement ID from Google Analytics 4 > Admin > Data Streams.',
-    helpLink: 'https://support.google.com/analytics/answer/9304153',
-    demoCode: 'G-XXXX1234',
-    template: (code) => `<!-- Google Analytics -->
-<script async src="https://www.googletagmanager.com/gtag/js?id=${code}"></script>
-<script>
-  window.dataLayer = window.dataLayer || [];
-  function gtag(){dataLayer.push(arguments);}
-  gtag('js', new Date());
-  gtag('config', '${code}');
-</script>`
-  },
-  {
-    id: 'google_tag_manager',
-    name: 'Google Tag Manager',
-    description: 'Add Google Tag Manager to manage Shopify pixels, marketing tags, and remarketing scripts in one place.',
-    icon: '🏷️',
-    category: 'Tracking',
-    cta: 'Add Google Tag Manager',
-    placeholder: 'Enter your GTM Container ID (GTM-XXXXX)',
-    helper: 'Find your container ID in Google Tag Manager > Admin > Container Settings.',
-    helpLink: 'https://support.google.com/tagmanager/answer/6103696',
-    demoCode: 'GTM-ABC1234',
-    template: (code) => `<!-- Google Tag Manager -->
-<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
-new Date().getTime(),event:'gtm.js'});var
-n=window.pintrk={};n.queue=[],n.version="3.0";var
-  t=document.createElement("script");t.async=!0;t.src=e;var
-  r=document.getElementsByTagName("script")[0];
-  r.parentNode.insertBefore(t,r)})(window,document,'script','dataLayer','${code}');</script>
-<noscript><iframe src="https://www.googletagmanager.com/ns.html?id=${code}"
-height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>`
-  },
-  {
-    id: 'tiktok_pixel',
-    name: 'TikTok Pixel',
-    description: 'Install TikTok Pixel to attribute TikTok ad spend to Shopify orders.',
-    icon: '🎵',
-    category: 'Advertising',
-    cta: 'Add TikTok Pixel',
-    placeholder: 'Enter your TikTok Pixel ID',
-    helper: 'Copy your Pixel ID from TikTok Ads Manager > Assets > Events.',
-    helpLink: 'https://ads.tiktok.com/help/article?aid=9666',
-    demoCode: 'TTP123456789',
-    template: (code) => `<!-- TikTok Pixel -->
-<script>
-!function (w, d, t) {
-  w.TiktokAnalyticsObject=t;var taq=w.taq=w.taq||[];taq.methods=["page","track","identify","instances","debug","on","off","once","ready","alias","group","enableCookie","disableCookie"],taq.setAndDefer=function(t,e){t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}};for(var i=0;i<taq.methods.length;i++)taq.setAndDefer(taq,taq.methods[i]);taq.load=function(t,e){var i=document.createElement("script");i.type="text/javascript",i.async=!0,i.src="https://analytics.tiktok.com/i18n/pixel/events.js",i.addEventListener("load",function(){e()},i.addEventListener("error",function(){e()}),document.head.appendChild(i)};
-  taq.load('${code}');
-  taq.page();
-</script>`
-  },
-  {
-    id: 'snapchat_pixel',
-    name: 'Snapchat Pixel',
-    description: 'Add Snapchat Pixel to optimise Snapchat ad performance for Shopify conversions.',
-    icon: '👻',
-    category: 'Advertising',
-    cta: 'Add Snapchat Pixel',
-    placeholder: 'Enter your Snapchat Pixel ID',
-    helper: 'Find your Snap Pixel ID in Snapchat Ads Manager > Events Manager.',
-    helpLink: 'https://businesshelp.snapchat.com/s/article/pixel-website-install',
-    demoCode: '1234-5678-9012-3456',
-    template: (code) => `<!-- Snapchat Pixel -->
-<script type='text/javascript'>
-(function(e,t,n){if(e.snaptr)return;var a=e.snaptr=function(){a.handleRequest?a.handleRequest.apply(a,arguments):a.queue.push(arguments)};a.queue=[];var s='script';r=t.createElement(s);r.async=!0;r.src=n;r.getAttribute('data-country-code')||(r.setAttribute('data-country-code','us'));s=t.getElementsByTagName(s)[0];s.parentNode.insertBefore(r,s)})(window,document,'https://sc-static.net/scevent.min.js');
-snaptr('init','${code}',{'user_email':'__USER_EMAIL__'});
-snaptr('init','${id}',{
-'user_email': '__INSERT_USER_EMAIL__',
-'user_phone_number': '__INSERT_USER_PHONE_NUMBER__'
-});
-snaptr('track','PAGE_VIEW');
-</script>`
-  },
-  {
-    id: 'pinterest_tag',
-    name: 'Pinterest Tag',
-    description: 'Add Pinterest Tag to measure Pinterest ads and build remarketing audiences.',
-    category: 'Advertising',
-    cta: 'Add Pinterest Tag',
-    placeholder: 'Paste your Pinterest Tag ID',
-    helper: 'Find your Tag ID in Pinterest Ads Manager > Ads > Conversions',
-    helpLink: 'https://help.pinterest.com/en/business/article/set-up-your-pinterest-tag',
-    demoCode: '1234567890123',
-    icon: '📌',
-    template: (id) => `<!-- Pinterest Tag -->
-<script>
-!function(e){if(!window.pintrk){window.pintrk = function () {
-window.pintrk.queue.push(Array.prototype.slice.call(arguments))};var
-  n=window.pintrk;n.queue=[],n.version="3.0";var
-  t=document.createElement("script");t.async=!0,t.src=e;var
-  r=document.getElementsByTagName("script")[0];
-  r.parentNode.insertBefore(t,r)}("https://s.pinimg.com/ct/core.js");
-pintrk('load', '${id}');
-pintrk('page');
-</script>
-<noscript>
-<img height="1" width="1" style="display:none;"
-  alt="" class="pinteres-noscript-img"
-  src="https://ct.pinterest.com/v3/?tid=${id}&noscript=1"/>
-</noscript>`
-  },
-  {
-    id: 'google_search_console',
-    name: 'Google Search Console',
-    description: 'Verify your Shopify store with Google Search Console to unlock search insights and indexing.',
-    icon: '🔍',
-    category: 'Verification',
-    cta: 'Verify Google Search Console',
-    placeholder: 'Paste your HTML tag verification code (content="...")',
-    helper: 'Find your HTML tag in Google Search Console > Settings > Ownership verification',
-    helpLink: 'https://support.google.com/webmasters/answer/9000072',
-    demoCode: 'TEST123',
-    template: (code) => `<meta name="google-site-verification" content="${code}" />`
-  },
-  {
-    id: 'microsoft_clarity',
-    name: 'Microsoft Clarity',
-    description: 'Install Microsoft Clarity heatmaps and session recordings without editing Shopify theme files.',
-    icon: '🪟',
-    category: 'Session Insights',
-    cta: 'Add Microsoft Clarity',
-    placeholder: 'Paste your Clarity tracking code',
-    helper: 'Copy the Clarity script from clarity.microsoft.com > Settings > Setup.',
-    helpLink: 'https://learn.microsoft.com/en-us/clarity/setup-and-installation',
-    template: (code) => code
-  },
-  {
-    id: 'hotjar',
-    name: 'Hotjar',
-    description: 'Add Hotjar to capture heatmaps, recordings, and on-site feedback for Shopify stores.',
-    icon: '🔥',
-    category: 'Session Insights',
-    cta: 'Install Hotjar',
-    placeholder: 'Paste your Hotjar tracking code',
-    helper: 'Find your Hotjar script in Hotjar > Sites & Organizations > Tracking.',
-    helpLink: 'https://help.hotjar.com/hc/en-us/articles/115009336727-Install-Hotjar-on-Your-Site',
-    template: (code) => code
-  },
-  {
-    id: 'custom',
-    name: 'Custom Script',
-    description: 'Add custom tracking code, partner pixels, verification tags, or analytics snippets with no coding required.',
-    icon: '⚡',
-    category: 'Custom',
-    cta: 'Add Custom Code',
-    placeholder: 'Paste your custom script here',
-    helper: 'Paste scripts from Shopify partners, analytics tools, verification providers, or custom pixels. Scripts are safely injected and removable anytime.',
-    helpLink: 'https://help.shopify.com/en/manual/promoting-marketing/marketing/pixels',
-    demoCode: '<script>console.log("Hello from ScriptPilot custom script!");</script>',
-    template: (code) => code
-  },
-];
-
-const DEVICE_OPTIONS = [
-  { label: 'All Devices', value: 'all' },
-  { label: 'Desktop Only', value: 'desktop' },
-  { label: 'Mobile Only', value: 'mobile' }
-];
-
-const PAGE_OPTIONS = [
-  { label: 'All Pages', value: 'all_pages' },
-  { label: 'Homepage Only', value: 'homepage' },
-  { label: 'Product Pages', value: 'product_pages' },
-  { label: 'Collection Pages', value: 'collection_pages' },
-  { label: 'Specific URLs', value: 'custom_urls' }
-];
-
-const PLACEMENT_OPTIONS = [
-  { label: "Head", value: "head" },
-  { label: "Body Start", value: "body_start" },
-  { label: "Body End", value: "body_end" }
-];
-
 export default function ScriptsPage() {
-  const { scripts, currentPlan, activeScriptCount, maxScripts, canAddMore, themeEditorUrl } = useLoaderData();
+  const { scripts, currentPlan, activeScriptCount, maxScripts, canAddMore, themeEditorUrl, themeExtension, onboarding = {} } = useLoaderData();
   const fetcher = useFetcher();
   const shopify = useAppBridge();
 
   const [expandedPlatform, setExpandedPlatform] = useState(null);
   const [showAdvanced, setShowAdvanced] = useState({});
-  const [formData, setFormData] = useState({
-    code: '',
-    placement: 'body',
-    deviceTarget: 'all',
-    pageTarget: 'all_pages',
-    customUrlRules: ''
-  });
+  const [formData, setFormData] = useState(() => ({ ...DEFAULT_FORM_STATE }));
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [showSuccessBanner, setShowSuccessBanner] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
+  const [formError, setFormError] = useState('');
 
-  // Toast notifications
-  if (fetcher.data?.success) {
-    if (!showSuccessBanner) {
-      setSuccessMessage(`${fetcher.data.scriptName || 'Script'} is now live on your storefront`);
+  const actionResult = fetcher.data;
+
+  useEffect(() => {
+    if (!actionResult) return;
+
+    let timeoutId;
+
+    if (actionResult.success) {
+      setFormError('');
+      setSuccessMessage(`${actionResult.scriptName || 'Script'} is now live on your storefront.`);
       setShowSuccessBanner(true);
-      setTimeout(() => setShowSuccessBanner(false), 5000);
+      timeoutId = window.setTimeout(() => setShowSuccessBanner(false), 5000);
+      shopify.toast.show("Script saved successfully");
+      handleCollapse();
+    } else if (actionResult.error) {
+      setFormError(actionResult.error);
+      shopify.toast.show(actionResult.error, { isError: true });
     }
-    shopify.toast.show("Script saved successfully");
-    fetcher.data = null;
-  }
-  if (fetcher.data?.error) {
-    shopify.toast.show(fetcher.data.error, { isError: true });
-    fetcher.data = null;
-  }
+
+    return () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    };
+  }, [actionResult, shopify, handleCollapse]);
 
   // Get connected scripts by platform
   const getScriptByPlatform = (platformId) => {
@@ -559,53 +716,53 @@ export default function ScriptsPage() {
       deviceTarget: script?.deviceTarget || "all",
       pageTarget: script?.pageTarget || "all_pages",
       customUrlRules: script?.customUrlRules || "",
-      placement: script?.placement || (platform?.id === 'google_search_console' ? 'head' : 'body_end'),
+      placement: script?.placement || defaultPlacementForPlatform(platformId),
       status: script?.status !== undefined ? script.status : true
     });
+    setFormError('');
   }, [scripts]);
 
   const handleCollapse = useCallback(() => {
     setExpandedPlatform(null);
-    setFormData({});
+    setFormData({ ...DEFAULT_FORM_STATE });
+    setFormError('');
+    setShowAdvanced({});
   }, []);
 
   const handleSubmit = useCallback((platform) => {
     const script = getScriptByPlatform(platform.id);
-    
-    // Detect if code is already the full meta tag/script (user pasted complete code)
-    const isCompleteCode = formData.code.includes('<') && formData.code.includes('>');
-    const finalCode = platform.id === 'custom' || isCompleteCode
-      ? formData.code
-      : platform.template(formData.code);
+
+    const validation = transformPlatformInput(platform.id, formData.code);
+    if (!validation.ok) {
+      setFormError(validation.error);
+      shopify.toast.show(validation.error, { isError: true });
+      return;
+    }
 
     if (script) {
-      // Update existing
       fetcher.submit(
-        { 
+        {
           ...formData,
-          code: finalCode,
+          code: validation.code,
           name: platform.name,
           scriptType: platform.id,
           scriptId: script.id,
-          intent: "update_script" 
+          intent: "update_script",
         },
         { method: "post" }
       );
     } else {
-      // Create new
       fetcher.submit(
-        { 
+        {
           ...formData,
-          code: finalCode,
+          code: validation.code,
           name: platform.name,
           scriptType: platform.id,
-          intent: "create_script" 
+          intent: "create_script",
         },
         { method: "post" }
       );
     }
-    
-    handleCollapse();
   }, [formData, scripts, fetcher, handleCollapse]);
 
   const handleDelete = useCallback((scriptId) => {
@@ -626,6 +783,47 @@ export default function ScriptsPage() {
     setShowAdvanced(prev => ({ ...prev, [platformId]: !prev[platformId] }));
   }, []);
 
+  const filteredPlatforms = useMemo(() => {
+    const query = searchQuery.toLowerCase();
+    return PLATFORMS.filter((platform) => {
+      const matchesSearch =
+        platform.name.toLowerCase().includes(query) ||
+        platform.description.toLowerCase().includes(query);
+      const matchesCategory = selectedCategory === 'all' || platform.category === selectedCategory;
+      return matchesSearch && matchesCategory;
+    });
+  }, [searchQuery, selectedCategory]);
+
+  const setupSteps = [
+    {
+      id: "theme-extension",
+      label: "Enable the ScriptPilot theme app extension",
+      complete: Boolean(themeExtension?.connected),
+      ctaUrl: themeExtension?.editorUrl,
+      status: themeExtension?.status,
+    },
+    {
+      id: "meta-pixel",
+      label: "Connect Meta Pixel or TikTok Pixel",
+      complete: Boolean(onboarding.hasMetaPixel),
+      ctaUrl: "/app/scripts",
+    },
+    {
+      id: "analytics",
+      label: "Install Google Analytics or Google Tag Manager",
+      complete: Boolean(onboarding.hasAnalyticsScript),
+      ctaUrl: "/app/scripts",
+    },
+    {
+      id: "verification",
+      label: "Verify Google Search Console",
+      complete: Boolean(onboarding.hasVerification),
+      ctaUrl: "/app/scripts",
+    },
+  ];
+
+  const outstandingSteps = setupSteps.filter((step) => !step.complete);
+
   return (
     <Page>
       <TitleBar title="Scripts" />
@@ -634,6 +832,25 @@ export default function ScriptsPage() {
           <Banner status="success" onDismiss={() => setShowSuccessBanner(false)}>
             <Text as="p" variant="bodyMd">
               ✅ {successMessage}
+            </Text>
+          </Banner>
+        </Box>
+      )}
+
+      {themeExtension && !themeExtension.connected && (
+        <Box paddingBlockEnd="400">
+          <Banner
+            status={themeExtension.status === "Detection Failed" ? "critical" : "warning"}
+            title="Enable the ScriptPilot theme app extension"
+            action={themeExtension.editorUrl ? {
+              content: "Open theme editor",
+              url: themeExtension.editorUrl,
+              external: true,
+            } : undefined}
+          >
+            <Text as="p" variant="bodyMd">
+              Shopify requires the theme app extension to be active before storefront scripts can render. Enable the
+              extension on your published theme from the Shopify theme editor.
             </Text>
           </Banner>
         </Box>
@@ -702,17 +919,60 @@ export default function ScriptsPage() {
                 </InlineStack>
               </Card>
 
+              <Card padding="500" background="bg-surface-secondary">
+                <BlockStack gap="300">
+                  <InlineStack alignment="space-between" blockAlign="center">
+                    <Text as="h2" variant="headingLg" fontWeight="semibold">
+                      Launch checklist
+                    </Text>
+                    <Badge tone={outstandingSteps.length === 0 ? "success" : "info"}>
+                      {outstandingSteps.length === 0 ? "Ready" : `${outstandingSteps.length} steps remaining`}
+                    </Badge>
+                  </InlineStack>
+                  <BlockStack gap="200">
+                    {setupSteps.map((step) => (
+                      <InlineStack
+                        key={step.id}
+                        alignment="space-between"
+                        blockAlign="center"
+                        gap="300"
+                        wrap
+                      >
+                        <InlineStack gap="200" blockAlign="center">
+                          <Badge tone={step.complete ? "success" : "warning"}>
+                            {step.complete ? "Done" : "Pending"}
+                          </Badge>
+                          <Text as="p" variant="bodyMd" fontWeight={step.complete ? "regular" : "semibold"}>
+                            {step.label}
+                          </Text>
+                          {step.id === "theme-extension" && step.status && (
+                            <Text as="span" tone="subdued" variant="bodySm">
+                              Status: {step.status}
+                            </Text>
+                          )}
+                        </InlineStack>
+                        {!step.complete && step.ctaUrl && (
+                          <Button
+                            size="slim"
+                            url={step.ctaUrl}
+                            target={step.id === "theme-extension" ? "_blank" : undefined}
+                            rel={step.id === "theme-extension" ? "noreferrer" : undefined}
+                          >
+                            {step.id === "theme-extension" ? "Enable extension" : "Complete step"}
+                          </Button>
+                        )}
+                      </InlineStack>
+                    ))}
+                  </BlockStack>
+                </BlockStack>
+              </Card>
+
               <div style={{
                 display: "grid",
                 gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
                 gap: "24px"
               }}>
-                {PLATFORMS.filter((platform) => {
-                  const matchesSearch = platform.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                                       platform.description.toLowerCase().includes(searchQuery.toLowerCase());
-                  const matchesCategory = selectedCategory === 'all' || platform.category === selectedCategory;
-                  return matchesSearch && matchesCategory;
-                }).map((platform) => {
+                {filteredPlatforms.map((platform) => {
                   const script = getScriptByPlatform(platform.id);
                   const isExpanded = expandedPlatform === platform.id;
                   const status = getPlatformStatus(platform.id);
@@ -856,6 +1116,11 @@ export default function ScriptsPage() {
                                   </BlockStack>
                                 )}
                               </div>
+                              {formError && (
+                                <Banner status="critical" onDismiss={() => setFormError('')}>
+                                  <Text as="p" variant="bodyMd">{formError}</Text>
+                                </Banner>
+                              )}
                             </BlockStack>
                           </Box>
                         )}

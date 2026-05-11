@@ -16,10 +16,77 @@ import { TitleBar } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
 
+const AUTH_DEBUG_PREFIX = "[auth-debug][app-index]";
+const serializeHeaders = (headers) => {
+  if (!headers) return null;
+  try {
+    return Array.from(headers.entries());
+  } catch (error) {
+    return `unserializable: ${error instanceof Error ? error.message : String(error)}`;
+  }
+};
+
+const logAuthDebug = (stage, payload) => {
+  const message = `${AUTH_DEBUG_PREFIX}[${stage}]`;
+  try {
+    console.info(message, JSON.stringify(payload));
+  } catch (error) {
+    console.info(message, payload);
+  }
+};
+
 export const loader = async ({ request }) => {
-  const { session, admin } = await authenticate.admin(request);
-  const shop = session.shop;
-  
+  const url = new URL(request.url);
+  const hostParam = url.searchParams.get("host");
+  const shopParam = url.searchParams.get("shop");
+  const authHeader = request.headers.get("Authorization") || request.headers.get("authorization") || null;
+
+  logAuthDebug("loader:start", {
+    url: url.toString(),
+    pathname: url.pathname,
+    search: url.search,
+    hostParam: hostParam || null,
+    shopParam: shopParam || null,
+    hasAuthHeader: Boolean(authHeader),
+  });
+
+  let session;
+  let admin;
+  let headers;
+  try {
+    const auth = await authenticate.admin(request);
+    session = auth?.session;
+    admin = auth?.admin;
+    headers = auth?.headers;
+    const restKeys = auth ? Object.keys(auth).filter((key) => !["session", "admin", "headers"].includes(key)) : [];
+
+    logAuthDebug("loader:success", {
+      sessionShop: session?.shop ?? null,
+      sessionId: session?.id ?? null,
+      sessionIsOnline: session?.isOnline ?? null,
+      extraKeys: restKeys,
+      returnedHeaders: serializeHeaders(headers),
+    });
+  } catch (error) {
+    if (error instanceof Response) {
+      logAuthDebug("loader:redirect", {
+        status: error.status,
+        statusText: error.statusText,
+        location: error.headers.get("Location"),
+        headers: serializeHeaders(error.headers),
+      });
+      throw error;
+    }
+
+    logAuthDebug("loader:error", {
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : null,
+    });
+    throw error;
+  }
+
+  const shop = session?.shop || shopParam;
+
   // Fetch shop data with script counts
   const shopData = await prisma.shop.findUnique({
     where: { shopifyDomain: shop },
@@ -31,13 +98,13 @@ export const loader = async ({ request }) => {
       }
     }
   });
-  
+
   // Calculate real statistics
   const activeScripts = shopData?.scripts.filter(s => s.status).length || 0;
   const disabledScripts = shopData?.scripts.filter(s => !s.status).length || 0;
   const connectedPlatforms = activeScripts;
   const currentPlan = shopData?.plan || 'Free';
-  
+
   // Try to detect theme extension status via Shopify API
   let themeExtensionStatus = 'Not Enabled';
   let themeExtensionDetails = null;
@@ -94,7 +161,7 @@ export const loader = async ({ request }) => {
     themeEditorUrl,
     hasVerificationTag,
     hasSessionInsights,
-  });
+  }, headers ? { headers } : {});
 };
 
 export default function Index() {
