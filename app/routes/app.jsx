@@ -1,5 +1,8 @@
 import { json } from "@remix-run/node";
 import { Link, Outlet, useLoaderData, useRouteError } from "@remix-run/react";
+import { useEffect, useMemo } from "react";
+import { useAppBridge } from "@shopify/app-bridge-react";
+import { authenticatedFetch, getSessionToken } from "@shopify/app-bridge-utils";
 import { boundary } from "@shopify/shopify-app-remix/server";
 import { AppProvider } from "@shopify/shopify-app-remix/react";
 import { NavMenu } from "@shopify/app-bridge-react";
@@ -24,6 +27,75 @@ const logAuthDebug = (stage, payload) => {
     console.info(message, payload);
   }
 };
+
+function AppBridgeDiagnostics({ apiKey, host }) {
+  const app = useAppBridge();
+
+  useEffect(() => {
+    if (!app || !host) {
+      console.info("[auth-debug][app-bridge]", {
+        status: app ? "ready" : "not_initialized",
+        host,
+      });
+      return;
+    }
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const token = await getSessionToken(app);
+        if (!cancelled) {
+          console.info("[auth-debug][session-token]", {
+            present: Boolean(token),
+            sample: token ? `${token.slice(0, 8)}…` : null,
+          });
+        }
+      } catch (tokenError) {
+        if (!cancelled) {
+          console.error("[auth-debug][session-token:error]", tokenError);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [app, host]);
+
+  useEffect(() => {
+    if (!app || typeof window === "undefined") {
+      return undefined;
+    }
+
+    const originalFetch = window.fetch.bind(window);
+    const fetchWithAuth = authenticatedFetch(app);
+
+    window.fetch = async (input, init) => {
+      const token = await getSessionToken(app);
+      const response = await fetchWithAuth(input, init);
+      console.info("[auth-debug][fetch]", {
+        url: typeof input === "string" ? input : input?.url,
+        tokenPresent: Boolean(token),
+        tokenSample: token ? `${token.slice(0, 8)}…` : null,
+      });
+      return response;
+    };
+
+    return () => {
+      window.fetch = originalFetch;
+    };
+  }, [app]);
+
+  useEffect(() => {
+    console.info("[auth-debug][app-provider]", {
+      apiKeyPresent: Boolean(apiKey),
+      hostPresent: Boolean(host),
+    });
+  }, [apiKey, host]);
+
+  return null;
+}
 
 export const links = () => [{ rel: "stylesheet", href: polarisStyles }];
 
@@ -54,11 +126,24 @@ export const loader = async ({ request }) => {
       returnedHeaders: serializeHeaders(headers),
     });
 
+    const resolvedHost = session?.host ?? hostParam ?? null;
     const data = {
       apiKey: process.env.SHOPIFY_API_KEY || "",
-      host: session?.host ?? hostParam ?? null,
+      host: resolvedHost,
       shop: session?.shop ?? shopParam ?? null,
     };
+
+    logAuthDebug("loader:response", {
+      resolvedHost,
+      hasApiKey: Boolean(data.apiKey),
+    });
+
+    if (!resolvedHost) {
+      logAuthDebug("loader:missing-host", {
+        message: "Host parameter could not be resolved.",
+      });
+      throw new Response("Missing host parameter", { status: 400 });
+    }
 
     return json(data, headers ? { headers } : {});
   } catch (error) {
@@ -82,9 +167,15 @@ export const loader = async ({ request }) => {
 
 export default function App() {
   const { apiKey, host } = useLoaderData();
+  const maskedKey = useMemo(() => (apiKey ? `${apiKey.slice(0, 6)}***` : null), [apiKey]);
+
+  useEffect(() => {
+    console.info("[auth-debug][app-provider:config]", { apiKey: maskedKey, host });
+  }, [maskedKey, host]);
 
   return (
     <AppProvider isEmbeddedApp apiKey={apiKey} host={host}>
+      <AppBridgeDiagnostics apiKey={apiKey} host={host} />
       <NavMenu>
         <Link to="/app" rel="home" aria-label="Dashboard">
           Dashboard

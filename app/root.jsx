@@ -5,8 +5,14 @@ import {
   Scripts,
   ScrollRestoration,
 } from "@remix-run/react";
+import { useEffect } from "react";
+import { addDocumentResponseHeaders } from "./shopify.server";
 
 export default function App() {
+  useEffect(() => {
+    console.info("[auth-debug][root] document shell mounted");
+  }, []);
+
   return (
     <html>
       <head>
@@ -28,3 +34,9 @@ export default function App() {
     </html>
   );
 }
+
+export const headers = (headersArgs) => {
+  const headers = addDocumentResponseHeaders(headersArgs);
+  headers.delete("x-frame-options");
+  return headers;
+};
