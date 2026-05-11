@@ -1,15 +1,15 @@
 import { json } from "@remix-run/node";
 import { Link, Outlet, useLoaderData, useRouteError } from "@remix-run/react";
-import { useEffect, useMemo } from "react";
-import { useAppBridge } from "@shopify/app-bridge-react";
-import { authenticatedFetch, getSessionToken } from "@shopify/app-bridge-utils";
 import { boundary } from "@shopify/shopify-app-remix/server";
 import { AppProvider } from "@shopify/shopify-app-remix/react";
 import { NavMenu } from "@shopify/app-bridge-react";
 import polarisStyles from "@shopify/polaris/build/esm/styles.css?url";
 import { authenticate } from "../shopify.server";
+import { resolveShopifyHost } from "../utils/host.server";
+import AppBridgeDiagnostics from "../components/AppBridgeDiagnostics";
 
 const AUTH_DEBUG_PREFIX = "[auth-debug][app-route]";
+
 const serializeHeaders = (headers) => {
   if (!headers) return null;
   try {
@@ -28,82 +28,17 @@ const logAuthDebug = (stage, payload) => {
   }
 };
 
-function AppBridgeDiagnostics({ apiKey, host }) {
-  const app = useAppBridge();
-
-  useEffect(() => {
-    if (!app || !host) {
-      console.info("[auth-debug][app-bridge]", {
-        status: app ? "ready" : "not_initialized",
-        host,
-      });
-      return;
-    }
-
-    let cancelled = false;
-
-    (async () => {
-      try {
-        const token = await getSessionToken(app);
-        if (!cancelled) {
-          console.info("[auth-debug][session-token]", {
-            present: Boolean(token),
-            sample: token ? `${token.slice(0, 8)}…` : null,
-          });
-        }
-      } catch (tokenError) {
-        if (!cancelled) {
-          console.error("[auth-debug][session-token:error]", tokenError);
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [app, host]);
-
-  useEffect(() => {
-    if (!app || typeof window === "undefined") {
-      return undefined;
-    }
-
-    const originalFetch = window.fetch.bind(window);
-    const fetchWithAuth = authenticatedFetch(app);
-
-    window.fetch = async (input, init) => {
-      const token = await getSessionToken(app);
-      const response = await fetchWithAuth(input, init);
-      console.info("[auth-debug][fetch]", {
-        url: typeof input === "string" ? input : input?.url,
-        tokenPresent: Boolean(token),
-        tokenSample: token ? `${token.slice(0, 8)}…` : null,
-      });
-      return response;
-    };
-
-    return () => {
-      window.fetch = originalFetch;
-    };
-  }, [app]);
-
-  useEffect(() => {
-    console.info("[auth-debug][app-provider]", {
-      apiKeyPresent: Boolean(apiKey),
-      hostPresent: Boolean(host),
-    });
-  }, [apiKey, host]);
-
-  return null;
-}
-
 export const links = () => [{ rel: "stylesheet", href: polarisStyles }];
 
 export const loader = async ({ request }) => {
   const url = new URL(request.url);
   const hostParam = url.searchParams.get("host");
   const shopParam = url.searchParams.get("shop");
-  const authHeader = request.headers.get("Authorization") || request.headers.get("authorization") || null;
+  const idTokenParam = url.searchParams.get("id_token");
+  const embeddedParam = url.searchParams.get("embedded");
+  const authHeader =
+    request.headers.get("Authorization") || request.headers.get("authorization") || null;
+  const headerKeys = Array.from(request.headers.keys());
 
   logAuthDebug("loader:start", {
     url: url.toString(),
@@ -111,7 +46,10 @@ export const loader = async ({ request }) => {
     search: url.search,
     hostParam: hostParam || null,
     shopParam: shopParam || null,
+    embedded: embeddedParam || null,
+    hasIdTokenParam: Boolean(idTokenParam),
     hasAuthHeader: Boolean(authHeader),
+    headerKeys,
   });
 
   try {
@@ -126,7 +64,11 @@ export const loader = async ({ request }) => {
       returnedHeaders: serializeHeaders(headers),
     });
 
-    const resolvedHost = session?.host ?? hostParam ?? null;
+    const { host: resolvedHost, setCookie, source: hostSource } = await resolveShopifyHost(
+      request,
+      session?.host ?? null,
+    );
+
     const data = {
       apiKey: process.env.SHOPIFY_API_KEY || "",
       host: resolvedHost,
@@ -134,18 +76,19 @@ export const loader = async ({ request }) => {
     };
 
     logAuthDebug("loader:response", {
-      resolvedHost,
+      resolvedHost: Boolean(resolvedHost),
+      hostSource,
       hasApiKey: Boolean(data.apiKey),
+      shop: data.shop,
     });
 
-    if (!resolvedHost) {
-      logAuthDebug("loader:missing-host", {
-        message: "Host parameter could not be resolved.",
-      });
-      throw new Response("Missing host parameter", { status: 400 });
+    const responseHeaders = headers ? new Headers(headers) : new Headers();
+    if (setCookie) {
+      responseHeaders.append("Set-Cookie", setCookie);
+      logAuthDebug("loader:host-cookie", { applied: true });
     }
 
-    return json(data, headers ? { headers } : {});
+    return json(data, responseHeaders.size ? { headers: responseHeaders } : {});
   } catch (error) {
     if (error instanceof Response) {
       logAuthDebug("loader:redirect", {
@@ -166,16 +109,11 @@ export const loader = async ({ request }) => {
 };
 
 export default function App() {
-  const { apiKey, host } = useLoaderData();
-  const maskedKey = useMemo(() => (apiKey ? `${apiKey.slice(0, 6)}***` : null), [apiKey]);
-
-  useEffect(() => {
-    console.info("[auth-debug][app-provider:config]", { apiKey: maskedKey, host });
-  }, [maskedKey, host]);
+  const { apiKey, host, shop } = useLoaderData();
 
   return (
-    <AppProvider isEmbeddedApp apiKey={apiKey} host={host}>
-      <AppBridgeDiagnostics apiKey={apiKey} host={host} />
+    <AppProvider isEmbeddedApp apiKey={apiKey}>
+      <AppBridgeDiagnostics apiKey={apiKey} host={host} shop={shop} />
       <NavMenu>
         <Link to="/app" rel="home" aria-label="Dashboard">
           Dashboard
