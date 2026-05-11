@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { redirect } from "@remix-run/node";
 import { Form, useActionData, useLoaderData } from "@remix-run/react";
 import {
   AppProvider as PolarisAppProvider,
@@ -17,6 +18,14 @@ import { loginErrorMessage } from "./error.server";
 export const links = () => [{ rel: "stylesheet", href: polarisStyles }];
 
 export const loader = async ({ request }) => {
+  const url = new URL(request.url);
+  const embedded = url.searchParams.get("embedded");
+  const host = url.searchParams.get("host");
+
+  if (embedded === "1" || host) {
+    return redirect(`/app${url.search}`);
+  }
+
   const errors = loginErrorMessage(await login(request));
 
   return { errors, polarisTranslations };

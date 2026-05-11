@@ -1,4 +1,4 @@
-import { json } from "@remix-run/node";
+import { json, redirect } from "@remix-run/node";
 import { Form, Link, useLoaderData } from "@remix-run/react";
 import { login } from "../../shopify.server";
 import styles from "./styles.module.css";
@@ -152,13 +152,33 @@ export const links = () => [
   }
 ];
 
-export const loader = async () => json({ showForm: Boolean(login) });
+export const loader = async ({ request }) => {
+  const url = new URL(request.url);
+  const embedded = url.searchParams.get("embedded");
+  const host = url.searchParams.get("host");
+
+  if (embedded === "1" || host) {
+    return redirect(`/app${url.search}`);
+  }
+
+  return json({ showForm: Boolean(login) });
+};
 
 export default function LandingPage() {
   const { showForm } = useLoaderData();
 
   return (
     <div className={styles.page}>
+      <script
+        dangerouslySetInnerHTML={{
+          __html: `
+            if (window.self !== window.top) {
+              var search = window.location.search;
+              window.top.location.href = '/app' + search;
+            }
+          `,
+        }}
+      />
       <script
         type="application/ld+json"
         suppressHydrationWarning
@@ -205,7 +225,7 @@ export default function LandingPage() {
               </p>
               <div className={styles.ctaRow}>
                 {showForm ? (
-                  <Form className={styles.launchForm} method="post" action="/auth/login">
+                  <Form className={styles.launchForm} method="post" action="/auth/login" reloadDocument>
                     <label className={styles.formLabel} htmlFor="shop-domain">
                       Enter your Shopify domain
                     </label>
