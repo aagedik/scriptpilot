@@ -1,0 +1,153 @@
+{
+  "dashboard": {
+    "title": "ScriptPilot Dashboard",
+    "activeScripts": "Active Scripts",
+    "disabledScripts": "Disabled Scripts", 
+    "currentPlan": "Current Plan",
+    "lastModified": "Last Modified",
+    "noScriptsYet": "No scripts yet",
+    "quickActions": "Quick Actions",
+    "addNewScript": "Add New Script",
+    "browseTemplates": "Browse Templates",
+    "settings": "Settings"
+  },
+  "scripts": {
+    "title": "Scripts",
+    "addScript": "Add Script",
+    "editScript": "Edit Script",
+    "deleteScript": "Delete Script",
+    "duplicateScript": "Duplicate Script",
+    "enable": "Enable",
+    "disable": "Disable",
+    "active": "Active",
+    "disabled": "Disabled",
+    "name": "Name",
+    "description": "Description",
+    "placement": "Placement",
+    "deviceTarget": "Device Target",
+    "pageTarget": "Page Target",
+    "status": "Status",
+    "actions": "Actions",
+    "scriptName": "Script Name",
+    "scriptDescription": "Description",
+    "urlRules": "URL Rules",
+    "enableScript": "Enable script"
+  },
+  "templates": {
+    "title": "Script Templates",
+    "chooseTemplate": "Choose a template to get started quickly",
+    "templateHelp": "Templates help you add common scripts without writing code. Just select a template, fill in your details, and you're ready to go.",
+    "useTemplate": "Use Template",
+    "categories": {
+      "SEO": "SEO",
+      "Analytics": "Analytics", 
+      "Marketing": "Marketing",
+      "Custom": "Custom"
+    },
+    "templates": {
+      "googleSearchConsole": {
+        "name": "Google Search Console",
+        "description": "Verify your site with Google Search Console",
+        "verificationCode": "Verification Code",
+        "verificationCodePlaceholder": "Your Google verification code"
+      },
+      "googleTagManager": {
+        "name": "Google Tag Manager", 
+        "description": "Add Google Tag Manager to your store",
+        "gtmId": "GTM Container ID",
+        "gtmIdPlaceholder": "GTM-XXXXXXX"
+      },
+      "metaPixel": {
+        "name": "Meta Pixel (Facebook)",
+        "description": "Add Meta Pixel for Facebook advertising",
+        "pixelId": "Pixel ID",
+        "pixelIdPlaceholder": "Your Facebook Pixel ID"
+      },
+      "tiktokPixel": {
+        "name": "TikTok Pixel",
+        "description": "Add TikTok Pixel for TikTok advertising", 
+        "pixelId": "Pixel ID",
+        "pixelIdPlaceholder": "Your TikTok Pixel ID"
+      },
+      "microsoftClarity": {
+        "name": "Microsoft Clarity",
+        "description": "Add Microsoft Clarity for user behavior analytics",
+        "projectId": "Project ID", 
+        "projectIdPlaceholder": "Your Clarity Project ID"
+      },
+      "hotjar": {
+        "name": "Hotjar",
+        "description": "Add Hotjar for heatmaps and session recordings",
+        "siteId": "Site ID",
+        "siteIdPlaceholder": "Your Hotjar Site ID"
+      },
+      "pinterestTag": {
+        "name": "Pinterest Tag",
+        "description": "Add Pinterest Tag for Pinterest advertising",
+        "tagId": "Tag ID",
+        "tagIdPlaceholder": "Your Pinterest Tag ID"
+      },
+      "customHtml": {
+        "name": "Custom HTML",
+        "description": "Add custom HTML code",
+        "htmlCode": "HTML Code",
+        "htmlCodePlaceholder": "Your custom HTML code"
+      },
+      "customJavascript": {
+        "name": "Custom JavaScript",
+        "description": "Add custom JavaScript code", 
+        "jsCode": "JavaScript Code",
+        "jsCodePlaceholder": "Your custom JavaScript code"
+      }
+    }
+  },
+  "settings": {
+    "title": "Settings",
+    "emergencyControls": "Emergency Controls",
+    "emergencyDescription": "Use these controls in case of emergency. Disabling all scripts will immediately stop all script injections across your store.",
+    "disableAllScripts": "Disable All Scripts",
+    "enableAllScripts": "Enable All Scripts",
+    "shopInformation": "Shop Information",
+    "shopDomain": "Shop Domain",
+    "plan": "Plan",
+    "upgradePlan": "Upgrade Plan",
+    "freePlan": "Free Plan",
+    "about": "About ScriptPilot",
+    "aboutDescription": "ScriptPilot allows you to safely add scripts to your Shopify store without editing theme files. Use Theme App Extension technology to ensure compatibility and easy uninstallation.",
+    "version": "Version",
+    "author": "Author",
+    "website": "Website"
+  },
+  "placement": {
+    "head": "Head",
+    "bodyStart": "Body Start", 
+    "bodyEnd": "Body End"
+  },
+  "deviceTarget": {
+    "all": "All Devices",
+    "mobile": "Mobile Only",
+    "desktop": "Desktop Only"
+  },
+  "pageTarget": {
+    "all": "All Pages",
+    "homepage": "Homepage",
+    "product": "Product Pages",
+    "collection": "Collection Pages", 
+    "cart": "Cart Page",
+    "blog": "Blog Pages",
+    "search": "Search Page",
+    "custom": "Custom URL Rules"
+  },
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "add": "Add",
+    "loading": "Loading...",
+    "error": "Error",
+    "success": "Success",
+    "confirm": "Are you sure?",
+    "required": "Required"
+  }
+}

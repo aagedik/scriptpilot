@@ -1,0 +1,18 @@
+{%- comment -%}
+  ScriptPilot - Body Injection
+  This snippet renders body scripts from Shopify metafields
+  Scripts appear in page source (CTRL+U) for SEO and verification
+  NO JavaScript injection - pure server-side rendering
+{%- endcomment -%}
+
+{%- comment -%}
+  Load body scripts from metafields
+{%- endcomment -%}
+{%- assign body_scripts = shop.metafields.scriptpilot.body_scripts.value -%}
+
+{%- comment -%}
+  Output body scripts directly (server-side)
+{%- endcomment -%}
+{%- if body_scripts -%}
+  {{ body_scripts }}
+{%- endif -%}

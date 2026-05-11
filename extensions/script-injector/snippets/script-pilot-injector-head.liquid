@@ -1,0 +1,17 @@
+{%- comment -%}
+  ScriptPilot - Head Scripts
+  This snippet renders head scripts from Shopify metafields
+  Scripts appear in page source (CTRL+U) for SEO and verification
+{%- endcomment -%}
+
+{%- comment -%}
+  Load head scripts from metafields
+{%- endcomment -%}
+{%- assign head_scripts = shop.metafields.scriptpilot.head_scripts.value -%}
+
+{%- comment -%}
+  Output head scripts directly (server-side)
+{%- endcomment -%}
+{%- if head_scripts -%}
+  {{ head_scripts }}
+{%- endif -%}

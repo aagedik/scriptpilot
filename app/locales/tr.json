@@ -1,0 +1,153 @@
+{
+  "dashboard": {
+    "title": "ScriptPilot Panel",
+    "activeScripts": "Aktif Script'ler",
+    "disabledScripts": "Pasif Script'ler", 
+    "currentPlan": "Mevcut Plan",
+    "lastModified": "Son Değiştirme",
+    "noScriptsYet": "Henüz script yok",
+    "quickActions": "Hızlı İşlemler",
+    "addNewScript": "Yeni Script Ekle",
+    "browseTemplates": "Şablonları Gözden Geçir",
+    "settings": "Ayarlar"
+  },
+  "scripts": {
+    "title": "Script'ler",
+    "addScript": "Script Ekle",
+    "editScript": "Script Düzenle",
+    "deleteScript": "Script Sil",
+    "duplicateScript": "Script Çoğalt",
+    "enable": "Aktif Et",
+    "disable": "Pasif Et",
+    "active": "Aktif",
+    "disabled": "Pasif",
+    "name": "Ad",
+    "description": "Açıklama",
+    "placement": "Yerleşim",
+    "deviceTarget": "Cihaz Hedefi",
+    "pageTarget": "Sayfa Hedefi",
+    "status": "Durum",
+    "actions": "İşlemler",
+    "scriptName": "Script Adı",
+    "scriptDescription": "Açıklama",
+    "urlRules": "URL Kuralları",
+    "enableScript": "Script'i aktif et"
+  },
+  "templates": {
+    "title": "Script Şablonları",
+    "chooseTemplate": "Hızlı başlamak için bir şablon seçin",
+    "templateHelp": "Şablonlar kod yazmadan ortak script'leri eklemenize yardımcı olur. Sadece bir şablon seçin, bilgilerinizi doldurun ve hazırsınız.",
+    "useTemplate": "Şablonu Kullan",
+    "categories": {
+      "SEO": "SEO",
+      "Analytics": "Analitik", 
+      "Marketing": "Pazarlama",
+      "Custom": "Özel"
+    },
+    "templates": {
+      "googleSearchConsole": {
+        "name": "Google Search Console",
+        "description": "Sitenizi Google Search Console ile doğrulayın",
+        "verificationCode": "Doğrulama Kodu",
+        "verificationCodePlaceholder": "Google doğrulama kodunuz"
+      },
+      "googleTagManager": {
+        "name": "Google Tag Manager", 
+        "description": "Mağazanıza Google Tag Manager ekleyin",
+        "gtmId": "GTM Container ID",
+        "gtmIdPlaceholder": "GTM-XXXXXXX"
+      },
+      "metaPixel": {
+        "name": "Meta Pixel (Facebook)",
+        "description": "Facebook reklamcılığı için Meta Pixel ekleyin",
+        "pixelId": "Pixel ID",
+        "pixelIdPlaceholder": "Facebook Pixel ID'niz"
+      },
+      "tiktokPixel": {
+        "name": "TikTok Pixel",
+        "description": "TikTok reklamcılığı için TikTok Pixel ekleyin", 
+        "pixelId": "Pixel ID",
+        "pixelIdPlaceholder": "TikTok Pixel ID'niz"
+      },
+      "microsoftClarity": {
+        "name": "Microsoft Clarity",
+        "description": "Kullanıcı davranış analitiği için Microsoft Clarity ekleyin",
+        "projectId": "Proje ID", 
+        "projectIdPlaceholder": "Clarity Proje ID'niz"
+      },
+      "hotjar": {
+        "name": "Hotjar",
+        "description": "Heatmap ve oturum kayıtları için Hotjar ekleyin",
+        "siteId": "Site ID",
+        "siteIdPlaceholder": "Hotjar Site ID'niz"
+      },
+      "pinterestTag": {
+        "name": "Pinterest Tag",
+        "description": "Pinterest reklamcılığı için Pinterest Tag ekleyin",
+        "tagId": "Tag ID",
+        "tagIdPlaceholder": "Pinterest Tag ID'niz"
+      },
+      "customHtml": {
+        "name": "Özel HTML",
+        "description": "Özel HTML kodu ekleyin",
+        "htmlCode": "HTML Kodu",
+        "htmlCodePlaceholder": "Özel HTML kodunuz"
+      },
+      "customJavascript": {
+        "name": "Özel JavaScript",
+        "description": "Özel JavaScript kodu ekleyin", 
+        "jsCode": "JavaScript Kodu",
+        "jsCodePlaceholder": "Özel JavaScript kodunuz"
+      }
+    }
+  },
+  "settings": {
+    "title": "Ayarlar",
+    "emergencyControls": "Acil Durum Kontrolleri",
+    "emergencyDescription": "Acil durumlarda bu kontrolleri kullanın. Tüm script'leri pasif hale getirmek, mağazanızdaki tüm script enjeksiyonlarını anında durduracaktır.",
+    "disableAllScripts": "Tüm Script'leri Pasif Et",
+    "enableAllScripts": "Tüm Script'leri Aktif Et",
+    "shopInformation": "Mağaza Bilgileri",
+    "shopDomain": "Mağaza Domain",
+    "plan": "Plan",
+    "upgradePlan": "Plan Yükselt",
+    "freePlan": "Ücretsiz Plan",
+    "about": "ScriptPilot Hakkında",
+    "aboutDescription": "ScriptPilot, tema dosyalarını düzenlemeden Shopify mağazanıza güvenli bir şekilde script'ler eklemenizi sağlar. Uyumluluk ve kolay kaldırma için Theme App Extension teknolojisini kullanın.",
+    "version": "Sürüm",
+    "author": "Yazar",
+    "website": "Web Sitesi"
+  },
+  "placement": {
+    "head": "Head",
+    "bodyStart": "Body Başlangıç", 
+    "bodyEnd": "Body Son"
+  },
+  "deviceTarget": {
+    "all": "Tüm Cihazlar",
+    "mobile": "Sadece Mobil",
+    "desktop": "Sadece Masaüstü"
+  },
+  "pageTarget": {
+    "all": "Tüm Sayfalar",
+    "homepage": "Ana Sayfa",
+    "product": "Ürün Sayfaları",
+    "collection": "Koleksiyon Sayfaları", 
+    "cart": "Sepet Sayfası",
+    "blog": "Blog Sayfaları",
+    "search": "Arama Sayfası",
+    "custom": "Özel URL Kuralları"
+  },
+  "common": {
+    "save": "Kaydet",
+    "cancel": "İptal",
+    "delete": "Sil",
+    "edit": "Düzenle",
+    "add": "Ekle",
+    "loading": "Yükleniyor...",
+    "error": "Hata",
+    "success": "Başarılı",
+    "confirm": "Emin misiniz?",
+    "required": "Gerekli"
+  }
+}

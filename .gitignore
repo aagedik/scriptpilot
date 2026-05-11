@@ -1,0 +1,55 @@
+node_modules
+.DS_Store
+
+# Build artifacts
+/.cache
+/build
+/app/build
+/public/build/
+/public/_dev
+/app/public/build
+dist/
+dist-ssr/
+.vite/
+
+# Runtime files
+logs/
+*.log
+*.pid
+*.pid.lock
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Uploaded or generated assets
+storage/
+uploads/
+
+# Database files
+/prisma/dev.sqlite
+/prisma/dev.sqlite-journal
+database.sqlite
+*.sqlite
+*.sqlite-journal
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Package manager output
+/node_modules/.cache/
+
+# PM2
+/.pm2
+pm2.log
+
+# Local IDE
+.idea/
+
+/extensions/*/dist
+
+# Ignore shopify files created during app dev
+.shopify/*
+.shopify.lock

@@ -1,0 +1,106 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Note that some adapters may set a maximum length for the String type by default, please ensure your strings are long
+// enough when changing adapters.
+// See https://www.prisma.io/docs/orm/reference/prisma-schema-reference#string for more information
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Session {
+  id                  String    @id
+  shop                String
+  state               String
+  isOnline            Boolean   @default(false)
+  scope               String?
+  expires             DateTime?
+  accessToken         String
+  userId              BigInt?
+  firstName           String?
+  lastName            String?
+  email               String?
+  accountOwner        Boolean   @default(false)
+  locale              String?
+  collaborator        Boolean?  @default(false)
+  emailVerified       Boolean?  @default(false)
+  refreshToken        String?
+  refreshTokenExpires DateTime?
+}
+
+model Shop {
+  id              String   @id @default(cuid())
+  shopifyDomain   String   @unique
+  plan            String   @default("free")
+  billingStatus   String   @default("active")
+  subscriptionId  String?
+  trialEndsAt     DateTime?
+  lastActivityAt  DateTime @default(now())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  scripts         Script[]
+  activityLogs    ActivityLog[]
+}
+
+model Script {
+  id             String   @id @default(cuid())
+  shopId         String
+  name           String
+  description    String?
+  code           String
+  placement      String
+  scriptType     String   @default("custom")
+  status         Boolean  @default(true)
+  deviceTarget   String
+  pageTarget     String
+  customUrlRules String?
+  priority       Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  shop           Shop     @relation(fields: [shopId], references: [id])
+}
+
+model Admin {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Announcement {
+  id        String   @id @default(cuid())
+  title     String
+  content   String
+  target    String   @default("all") // all, free, paid
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  action      String   // login, failed_login, merchant_update, billing_change, announcement, subscription_change, script_create, script_update, script_delete
+  adminEmail  String?
+  shopDomain  String?
+  details     String?
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+}
+
+model ActivityLog {
+  id          String   @id @default(cuid())
+  shopId      String
+  action      String   // script_created, script_updated, script_deleted, script_enabled, script_disabled, theme_extension_enabled
+  scriptName  String?
+  details     String?
+  createdAt   DateTime @default(now())
+  
+  shop        Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+}
