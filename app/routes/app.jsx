@@ -39,7 +39,6 @@ export const loader = async ({ request }) => {
   const authHeader =
     request.headers.get("Authorization") || request.headers.get("authorization") || null;
   const secFetchDest = request.headers.get("sec-fetch-dest");
-  const headerKeys = Array.from(request.headers.keys());
 
   logAuthDebug("loader:start", {
     fullUrl: url.toString(),
@@ -51,8 +50,6 @@ export const loader = async ({ request }) => {
     hasIdTokenParam: Boolean(idTokenParam),
     hasAuthHeader: Boolean(authHeader),
     secFetchDest,
-    headerKeys,
-    allParams: Object.fromEntries(url.searchParams),
   });
 
   try {

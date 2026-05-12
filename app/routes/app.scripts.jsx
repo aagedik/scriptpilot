@@ -155,29 +155,34 @@ export const loader = async ({ request }) => {
   let themeExtensionConnected = false;
 
   try {
-    const extensions = await admin.rest.resources.Extension.all({ session });
-    const scriptPilotExtension = extensions.data.find(
-      (ext) =>
-        ext.title?.toLowerCase().includes("scriptpilot") ||
-        ext.type === "theme_app_extension"
-    );
-
-    if (scriptPilotExtension) {
-      const themes = await admin.rest.resources.Theme.all({ session });
-      const mainTheme = themes.data.find((theme) => theme.role === "main");
-
-      if (mainTheme) {
-        themeExtensionStatus = "Connected";
-        themeExtensionConnected = true;
-      } else {
-        themeExtensionStatus = "Missing on published theme";
-      }
+    if (!admin?.rest?.resources?.Extension || !admin?.rest?.resources?.Theme) {
+      console.warn("Shopify admin.rest.resources not available, skipping theme extension check");
+      themeExtensionStatus = "Unknown";
     } else {
-      themeExtensionStatus = "Not Installed";
+      const extensions = await admin.rest.resources.Extension.all({ session });
+      const scriptPilotExtension = extensions.data.find(
+        (ext) =>
+          ext.title?.toLowerCase().includes("scriptpilot") ||
+          ext.type === "theme_app_extension"
+      );
+
+      if (scriptPilotExtension) {
+        const themes = await admin.rest.resources.Theme.all({ session });
+        const mainTheme = themes.data.find((theme) => theme.role === "main");
+
+        if (mainTheme) {
+          themeExtensionStatus = "Connected";
+          themeExtensionConnected = true;
+        } else {
+          themeExtensionStatus = "Missing on published theme";
+        }
+      } else {
+        themeExtensionStatus = "Not Installed";
+      }
     }
   } catch (error) {
+    console.error("Error checking theme extension status:", error);
     themeExtensionStatus = "Detection Failed";
-    console.error("Failed to detect theme extension status:", error);
   }
 
   const installedPlatformIds = new Set(scripts.map((script) => script.scriptType));

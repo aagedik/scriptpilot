@@ -110,39 +110,45 @@ export const loader = async ({ request }) => {
   let themeExtensionDetails = null;
   let themeEditorUrl = null;
   try {
-    // Check if extension is installed in the theme
-    const extensions = await admin.rest.resources.Extension.all({ session });
-    const scriptPilotExtension = extensions.data.find(ext => 
-      ext.title?.toLowerCase().includes('scriptpilot') || 
-      ext.type === 'theme_app_extension'
-    );
-    
-    if (scriptPilotExtension) {
-      // Check if extension is enabled on main theme
-      const themes = await admin.rest.resources.Theme.all({ session });
-      const mainTheme = themes.data.find(t => t.role === 'main');
-      
-      if (mainTheme) {
-        // Check if extension is in the theme's enabled extensions
-        // This is a simplified check - in production you'd verify the extension is actually active
-        themeExtensionStatus = 'Connected';
-        themeExtensionDetails = {
-          themeId: mainTheme.id,
-          themeName: mainTheme.name
-        };
-      } else {
-        themeExtensionStatus = 'Not Enabled';
-      }
+    // Add null guard for admin.rest
+    if (!admin?.rest?.resources?.Extension || !admin?.rest?.resources?.Theme) {
+      console.warn('Shopify admin.rest.resources not available, skipping theme extension check');
+      themeExtensionStatus = 'Unknown';
     } else {
-      themeExtensionStatus = 'Not Enabled';
-    }
+      // Check if extension is installed in the theme
+      const extensions = await admin.rest.resources.Extension.all({ session });
+      const scriptPilotExtension = extensions.data.find(ext =>
+        ext.title?.toLowerCase().includes('scriptpilot') ||
+        ext.type === 'theme_app_extension'
+      );
 
-    if (process.env.SHOPIFY_API_KEY) {
-      themeEditorUrl = `https://${shop}/admin/themes/current/editor?context=apps&activateAppId=${process.env.SHOPIFY_API_KEY}`;
+      if (scriptPilotExtension) {
+        // Check if extension is enabled on main theme
+        const themes = await admin.rest.resources.Theme.all({ session });
+        const mainTheme = themes.data.find(t => t.role === 'main');
+
+        if (mainTheme) {
+          // Check if extension is in the theme's enabled extensions
+          // This is a simplified check - in production you'd verify the extension is actually active
+          themeExtensionStatus = 'Connected';
+          themeExtensionDetails = {
+            themeId: mainTheme.id,
+            themeName: mainTheme.name
+          };
+        } else {
+          themeExtensionStatus = 'Not Enabled';
+        }
+      } else {
+        themeExtensionStatus = 'Not Installed';
+      }
     }
   } catch (error) {
-    console.error('Error checking theme extension:', error);
-    themeExtensionStatus = 'Detection Failed';
+    console.error('Error checking theme extension status:', error);
+    themeExtensionStatus = 'Error';
+  }
+
+  if (process.env.SHOPIFY_API_KEY) {
+    themeEditorUrl = `https://${shop}/admin/themes/current/editor?context=apps&activateAppId=${process.env.SHOPIFY_API_KEY}`;
   }
 
   const hasVerificationTag = shopData?.scripts?.some(script => script.scriptType === 'google_search_console') || false;

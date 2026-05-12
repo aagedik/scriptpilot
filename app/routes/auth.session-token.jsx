@@ -16,7 +16,6 @@ export const loader = async ({ request }) => {
     shop,
     host,
     embedded,
-    allParams: Object.fromEntries(url.searchParams),
   });
 
   if (!shopifyReload) {

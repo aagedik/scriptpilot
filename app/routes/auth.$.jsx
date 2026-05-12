@@ -23,7 +23,6 @@ export const loader = async ({ request }) => {
     embedded,
     host,
     shop,
-    allParams: Object.fromEntries(url.searchParams),
   });
 
   try {

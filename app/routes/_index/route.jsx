@@ -165,7 +165,6 @@ export const loader = async ({ request }) => {
     embedded,
     host,
     shop,
-    allParams: Object.fromEntries(url.searchParams),
     willRedirectToApp: Boolean(embedded === "1" || host),
   });
 
