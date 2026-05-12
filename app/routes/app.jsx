@@ -44,6 +44,23 @@ export const loader = async ({ request }) => {
     request.headers.get("Authorization") || request.headers.get("authorization") || null;
   const secFetchDest = request.headers.get("sec-fetch-dest");
 
+  console.log("[AUTH-TRACE][before]", {
+    url: url.toString(),
+    pathname: url.pathname,
+    hasAuthorization: !!authHeader,
+    authorizationSample: authHeader?.slice(0, 30),
+    embedded: embeddedParam,
+    hasIdToken: !!idTokenParam,
+    idTokenSample: idTokenParam?.slice(0, 30),
+    shop: shopParam,
+    host: hostParam,
+    secFetchDest,
+  });
+
+  if (idTokenParam) {
+    console.log("[AUTH-TRACE] id_token arrived successfully in URL");
+  }
+
   logAuthDebug("loader:start", {
     fullUrl: url.toString(),
     pathname: url.pathname,
@@ -59,6 +76,14 @@ export const loader = async ({ request }) => {
   try {
     const auth = await authenticate.admin(request);
     const { session, headers, ...rest } = auth ?? {};
+
+    console.log("[AUTH-TRACE][after]", {
+      sessionExists: !!session,
+      adminExists: !!rest?.admin,
+      sessionShop: session?.shop ?? null,
+      sessionId: session?.id ?? null,
+      returnedHeaders: serializeHeaders(headers),
+    });
 
     logAuthDebug("loader:success", {
       sessionShop: session?.shop ?? null,
