@@ -17,6 +17,11 @@ export default function App() {
           href="https://cdn.shopify.com/static/fonts/inter/v4/styles.css"
         />
         <script
+          src="https://cdn.shopify.com/shopifycloud/app-bridge.js"
+          data-api-key={process.env.SHOPIFY_API_KEY}
+        />
+        <meta name="shopify-api-key" content={process.env.SHOPIFY_API_KEY} />
+        <script
           dangerouslySetInnerHTML={{
             __html: `
               const urlParams = new URLSearchParams(window.location.search);
@@ -33,6 +38,14 @@ export default function App() {
                 appBridgeGlobal: !!window.appBridge,
                 embedded: embedded,
                 userAgent: navigator.userAgent.slice(0, 60),
+              });
+
+              console.log("[bridge-debug]", {
+                shopifyGlobal: !!window.shopify,
+                appBridgeGlobal: !!window.appBridge,
+                topEqualsSelf: window.top === window.self,
+                scripts: [...document.scripts].map(s => s.src).filter(Boolean),
+                shopifyApiKeyMeta: document.querySelector('meta[name="shopify-api-key"]')?.content || null,
               });
 
               if (embedded === "1" && topEqualsSelf) {
