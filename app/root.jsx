@@ -16,6 +16,21 @@ export default function App() {
           rel="stylesheet"
           href="https://cdn.shopify.com/static/fonts/inter/v4/styles.css"
         />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              console.log("[embed-debug][boot]", {
+                topEqualsSelf: window.top === window.self,
+                inIframe: window.self !== window.top,
+                location: window.location.href,
+                referrer: document.referrer || null,
+                shopifyGlobal: !!window.shopify,
+                appBridgeGlobal: !!window.appBridge,
+                userAgent: navigator.userAgent.slice(0, 60),
+              });
+            `,
+          }}
+        />
         <Meta />
         <Links />
       </head>
