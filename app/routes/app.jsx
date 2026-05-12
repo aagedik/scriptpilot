@@ -44,6 +44,13 @@ export const loader = async ({ request }) => {
     request.headers.get("Authorization") || request.headers.get("authorization") || null;
   const secFetchDest = request.headers.get("sec-fetch-dest");
 
+  // Log ALL request headers for diagnostics
+  const allHeaders = {};
+  for (const [key, value] of request.headers.entries()) {
+    allHeaders[key] = value;
+  }
+  console.log("[AUTH-TRACE][all-headers]", allHeaders);
+
   console.log("[AUTH-TRACE][before]", {
     url: url.toString(),
     pathname: url.pathname,
