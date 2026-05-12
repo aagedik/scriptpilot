@@ -6,13 +6,12 @@ import { NavMenu } from "@shopify/app-bridge-react";
 import polarisStyles from "@shopify/polaris/build/esm/styles.css?url";
 import { authenticate } from "../shopify.server";
 import { resolveShopifyHost } from "../utils/host.server";
-import AppBridgeDiagnostics from "../components/AppBridgeDiagnostics";
 
 export const links = () => [{ rel: "stylesheet", href: polarisStyles }];
 
 export const loader = async ({ request }) => {
   const auth = await authenticate.admin(request);
-  const { session, headers, admin } = auth;
+  const { session, admin } = auth;
   const url = new URL(request.url);
 
   const { host: resolvedHost, setCookie, source: hostSource } = await resolveShopifyHost(
@@ -26,12 +25,12 @@ export const loader = async ({ request }) => {
     shop: session?.shop ?? url.searchParams.get("shop") ?? null,
   };
 
-  const responseHeaders = headers ? new Headers(headers) : new Headers();
+  const responseHeaders = new Headers();
   if (setCookie) {
     responseHeaders.append("Set-Cookie", setCookie);
   }
 
-  return json(data, responseHeaders.size ? { headers: responseHeaders } : {});
+  return json(data, { headers: responseHeaders });
 };
 
 export default function App() {
@@ -39,15 +38,14 @@ export default function App() {
 
   return (
     <AppProvider isEmbeddedApp apiKey={apiKey}>
-      <AppBridgeDiagnostics apiKey={apiKey} host={host} shop={shop} />
       <NavMenu>
-        <Link to="/app" rel="home" aria-label="Dashboard">
+        <Link to="/app" rel="home">
           Dashboard
         </Link>
-        <Link to="/app/scripts" aria-label="Scripts">
+        <Link to="/app/scripts">
           Scripts
         </Link>
-        <Link to="/app/settings" aria-label="Settings">
+        <Link to="/app/settings">
           Settings
         </Link>
       </NavMenu>
@@ -56,7 +54,6 @@ export default function App() {
   );
 }
 
-// Shopify needs Remix to catch some thrown responses, so that their headers are included in the response.
 export function ErrorBoundary() {
   return boundary.error(useRouteError());
 }
