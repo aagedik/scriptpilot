@@ -5,9 +5,6 @@ import { createReadableStreamFromReadable } from "@remix-run/node";
 import { isbot } from "isbot";
 import { addDocumentResponseHeaders } from "./shopify.server";
 
-console.log("[ENTRY_SERVER_RENDER] entry.server.jsx is being used");
-console.log("[ENTRY_SERVER_RENDER] module URL:", import.meta.url);
-
 export const streamTimeout = 5000;
 
 export default async function handleRequest(
@@ -16,7 +13,6 @@ export default async function handleRequest(
   responseHeaders,
   remixContext,
 ) {
-  console.log("[ENTRY_SERVER_RENDER] handleRequest called for:", request.url);
   addDocumentResponseHeaders(request, responseHeaders);
   const userAgent = request.headers.get("user-agent");
   const callbackName = isbot(userAgent ?? "") ? "onAllReady" : "onShellReady";

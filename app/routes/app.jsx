@@ -8,140 +8,30 @@ import { authenticate } from "../shopify.server";
 import { resolveShopifyHost } from "../utils/host.server";
 import AppBridgeDiagnostics from "../components/AppBridgeDiagnostics";
 
-const AUTH_DEBUG_PREFIX = "[auth-debug][app-route]";
-
-const serializeHeaders = (headers) => {
-  if (!headers) return null;
-  try {
-    const result = {};
-    for (const [key, value] of headers) {
-      result[key] = value;
-    }
-    return result;
-  } catch (error) {
-    return `unserializable: ${error instanceof Error ? error.message : String(error)}`;
-  }
-};
-
-const logAuthDebug = (stage, payload) => {
-  const message = `${AUTH_DEBUG_PREFIX}[${stage}]`;
-  try {
-    console.info(message, JSON.stringify(payload));
-  } catch (error) {
-    console.info(message, payload);
-  }
-};
-
 export const links = () => [{ rel: "stylesheet", href: polarisStyles }];
 
 export const loader = async ({ request }) => {
+  const auth = await authenticate.admin(request);
+  const { session, headers, admin } = auth;
   const url = new URL(request.url);
-  const hostParam = url.searchParams.get("host");
-  const shopParam = url.searchParams.get("shop");
-  const idTokenParam = url.searchParams.get("id_token");
-  const embeddedParam = url.searchParams.get("embedded");
-  const authHeader =
-    request.headers.get("Authorization") || request.headers.get("authorization") || null;
-  const secFetchDest = request.headers.get("sec-fetch-dest");
 
-  // Log ALL request headers for diagnostics
-  const allHeaders = {};
-  for (const [key, value] of request.headers.entries()) {
-    allHeaders[key] = value;
-  }
-  console.log("[AUTH-TRACE][all-headers]", allHeaders);
+  const { host: resolvedHost, setCookie, source: hostSource } = await resolveShopifyHost(
+    request,
+    session?.host ?? null,
+  );
 
-  console.log("[AUTH-TRACE][before]", {
-    url: url.toString(),
-    pathname: url.pathname,
-    hasAuthorization: !!authHeader,
-    authorizationSample: authHeader?.slice(0, 30),
-    embedded: embeddedParam,
-    hasIdToken: !!idTokenParam,
-    idTokenSample: idTokenParam?.slice(0, 30),
-    shop: shopParam,
-    host: hostParam,
-    secFetchDest,
-  });
+  const data = {
+    apiKey: process.env.SHOPIFY_API_KEY || "",
+    host: resolvedHost,
+    shop: session?.shop ?? url.searchParams.get("shop") ?? null,
+  };
 
-  if (idTokenParam) {
-    console.log("[AUTH-TRACE] id_token arrived successfully in URL");
+  const responseHeaders = headers ? new Headers(headers) : new Headers();
+  if (setCookie) {
+    responseHeaders.append("Set-Cookie", setCookie);
   }
 
-  logAuthDebug("loader:start", {
-    fullUrl: url.toString(),
-    pathname: url.pathname,
-    search: url.search,
-    hostParam: hostParam || null,
-    shopParam: shopParam || null,
-    embedded: embeddedParam || null,
-    hasIdTokenParam: Boolean(idTokenParam),
-    hasAuthHeader: Boolean(authHeader),
-    secFetchDest,
-  });
-
-  try {
-    const auth = await authenticate.admin(request);
-    const { session, headers, ...rest } = auth ?? {};
-
-    console.log("[AUTH-TRACE][after]", {
-      sessionExists: !!session,
-      adminExists: !!rest?.admin,
-      sessionShop: session?.shop ?? null,
-      sessionId: session?.id ?? null,
-      returnedHeaders: serializeHeaders(headers),
-    });
-
-    logAuthDebug("loader:success", {
-      sessionShop: session?.shop ?? null,
-      sessionId: session?.id ?? null,
-      sessionIsOnline: session?.isOnline ?? null,
-      extraKeys: rest ? Object.keys(rest) : [],
-      returnedHeaders: serializeHeaders(headers),
-    });
-
-    const { host: resolvedHost, setCookie, source: hostSource } = await resolveShopifyHost(
-      request,
-      session?.host ?? null,
-    );
-
-    const data = {
-      apiKey: process.env.SHOPIFY_API_KEY || "",
-      host: resolvedHost,
-      shop: session?.shop ?? shopParam ?? null,
-    };
-
-    logAuthDebug("loader:response", {
-      resolvedHost: Boolean(resolvedHost),
-      hostSource,
-      hasApiKey: Boolean(data.apiKey),
-      shop: data.shop,
-    });
-
-    const responseHeaders = headers ? new Headers(headers) : new Headers();
-    if (setCookie) {
-      responseHeaders.append("Set-Cookie", setCookie);
-      logAuthDebug("loader:host-cookie", { applied: true });
-    }
-
-    return json(data, responseHeaders.size ? { headers: responseHeaders } : {});
-  } catch (error) {
-    if (error instanceof Response) {
-      logAuthDebug("loader:redirect", {
-        status: error.status,
-        statusText: error.statusText,
-        location: error.headers.get("Location"),
-        headers: serializeHeaders(error.headers),
-      });
-      throw error;
-    }
-
-    logAuthDebug("loader:error", {
-      message: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : null,
-    });
-    throw error;
-  }
+  return json(data, responseHeaders.size ? { headers: responseHeaders } : {});
 };
 
 export default function App() {
@@ -149,21 +39,6 @@ export default function App() {
 
   return (
     <AppProvider isEmbeddedApp apiKey={apiKey}>
-      <script
-        dangerouslySetInnerHTML={{
-          __html: `
-            const urlParams = new URLSearchParams(window.location.search);
-            const embedded = urlParams.get("embedded");
-            if (embedded === "1" && window.top === window.self) {
-              console.error("[embed-debug][CRITICAL-BREAKOUT]", {
-                message: "embedded=1 present but window.top===window.self - iframe context lost!",
-                currentUrl: window.location.href,
-                shopifyGlobal: window.shopify ? true : false,
-              });
-            }
-          `,
-        }}
-      />
       <AppBridgeDiagnostics apiKey={apiKey} host={host} shop={shop} />
       <NavMenu>
         <Link to="/app" rel="home" aria-label="Dashboard">
