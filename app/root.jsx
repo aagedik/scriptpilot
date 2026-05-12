@@ -5,6 +5,10 @@ import {
   Scripts,
   ScrollRestoration,
 } from "@remix-run/react";
+
+console.log("[ROOT_RENDER] root.jsx is being imported");
+console.log("[ROOT_RENDER] module URL:", import.meta.url);
+
 export default function App() {
   return (
     <html>
@@ -29,7 +33,7 @@ export default function App() {
               const embedded = urlParams.get("embedded");
               const topEqualsSelf = window.top === window.self;
               const inIframe = window.self !== window.top;
-              
+
               console.log("[embed-debug][boot]", {
                 topEqualsSelf: topEqualsSelf,
                 inIframe: inIframe,
