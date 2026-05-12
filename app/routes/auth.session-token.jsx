@@ -50,13 +50,21 @@ export const loader = async ({ request }) => {
       const hostParam = searchParams.get("host");
       const shopParam = searchParams.get("shop");
 
+      const reloadUrlIsAbsolute = reloadUrl.href.startsWith("http://") || reloadUrl.href.startsWith("https://");
+      const reloadUrlIsStandalone = reloadUrl.hostname !== window.location.hostname;
+
       console.log(LOG, "bounce-page-loaded", {
         currentUrl: window.location.href,
+        currentHostname: window.location.hostname,
+        currentOrigin: window.location.origin,
         referrer: document.referrer || null,
         topEqualsSelf: window.top === window.self,
         inIframe: window.self !== window.top,
         reloadUrl: reloadUrl.toString(),
+        reloadUrlHostname: reloadUrl.hostname,
         reloadUrlOrigin: reloadUrl.origin,
+        reloadUrlIsAbsolute: reloadUrlIsAbsolute,
+        reloadUrlIsStandalone: reloadUrlIsStandalone,
         reloadUrlPathname: reloadUrl.pathname,
         embeddedParam,
         hostParam,
@@ -73,14 +81,26 @@ export const loader = async ({ request }) => {
         });
       }
 
+      if (reloadUrlIsStandalone && embeddedParam === "1") {
+        console.error(LOG, "CRITICAL-URL-MISMATCH", {
+          message: "reloadUrl is standalone absolute URL but embedded=1 - this will cause iframe breakout!",
+          reloadUrl: reloadUrl.toString(),
+          reloadUrlHostname: reloadUrl.hostname,
+          currentHostname: window.location.hostname,
+        });
+      }
+
       function redirectWithToken(token) {
         reloadUrl.searchParams.set("id_token", token);
         const finalUrl = reloadUrl.toString();
 
         console.log(LOG, "redirecting (iframe-safe)", {
           finalUrl,
+          finalUrlHostname: reloadUrl.hostname,
           finalUrlOrigin: reloadUrl.origin,
           finalUrlPathname: reloadUrl.pathname,
+          finalUrlIsAbsolute: reloadUrlIsAbsolute,
+          finalUrlIsStandalone: reloadUrlIsStandalone,
           hasEmbedded: finalUrl.includes("embedded="),
           hasHost: finalUrl.includes("host="),
           hasShop: finalUrl.includes("shop="),
@@ -89,7 +109,20 @@ export const loader = async ({ request }) => {
           inIframeBeforeRedirect: window.self !== window.top,
         });
 
-        window.location.replace(finalUrl);
+        if (window.shopify && window.shopify.redirect && window.shopify.redirect.toApp) {
+          console.log(LOG, "using App Bridge redirect API to preserve iframe context");
+          try {
+            window.shopify.redirect.toApp({
+              path: reloadUrl.pathname + reloadUrl.search
+            });
+          } catch (err) {
+            console.error(LOG, "App Bridge redirect failed, falling back to window.location.replace", err);
+            window.location.replace(finalUrl);
+          }
+        } else {
+          console.warn(LOG, "App Bridge redirect API not available, using window.location.replace (may break iframe)");
+          window.location.replace(finalUrl);
+        }
       }
 
       function waitAndRetry() {
