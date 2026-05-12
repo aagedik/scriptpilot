@@ -170,16 +170,6 @@ export default function LandingPage() {
   return (
     <div className={styles.page}>
       <script
-        dangerouslySetInnerHTML={{
-          __html: `
-            if (window.self !== window.top) {
-              var search = window.location.search;
-              window.top.location.href = '/app' + search;
-            }
-          `,
-        }}
-      />
-      <script
         type="application/ld+json"
         suppressHydrationWarning
         dangerouslySetInnerHTML={{ __html: structuredDataScript }}

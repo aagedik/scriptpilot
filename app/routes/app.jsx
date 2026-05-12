@@ -38,6 +38,7 @@ export const loader = async ({ request }) => {
   const embeddedParam = url.searchParams.get("embedded");
   const authHeader =
     request.headers.get("Authorization") || request.headers.get("authorization") || null;
+  const secFetchDest = request.headers.get("sec-fetch-dest");
   const headerKeys = Array.from(request.headers.keys());
 
   logAuthDebug("loader:start", {
@@ -49,6 +50,7 @@ export const loader = async ({ request }) => {
     embedded: embeddedParam || null,
     hasIdTokenParam: Boolean(idTokenParam),
     hasAuthHeader: Boolean(authHeader),
+    secFetchDest,
     headerKeys,
   });
 
