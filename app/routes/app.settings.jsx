@@ -20,7 +20,11 @@ const AUTH_DEBUG_PREFIX = "[auth-debug][app-settings]";
 const serializeHeaders = (headers) => {
   if (!headers) return null;
   try {
-    return Array.from(headers.entries());
+    const result = {};
+    for (const [key, value] of headers) {
+      result[key] = value;
+    }
+    return result;
   } catch (error) {
     return `unserializable: ${error instanceof Error ? error.message : String(error)}`;
   }

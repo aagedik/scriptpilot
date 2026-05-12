@@ -61,7 +61,6 @@ export const loader = async ({ request }) => {
         embeddedParam,
         hostParam,
         shopParam,
-        allReloadParams: Object.fromEntries(reloadUrl.searchParams),
         shopifyGlobal: !!window.shopify,
         appBridgeGlobal: !!window.appBridge,
       });
@@ -82,7 +81,6 @@ export const loader = async ({ request }) => {
           finalUrl,
           finalUrlOrigin: reloadUrl.origin,
           finalUrlPathname: reloadUrl.pathname,
-          finalParams: Object.fromEntries(reloadUrl.searchParams),
           hasEmbedded: finalUrl.includes("embedded="),
           hasHost: finalUrl.includes("host="),
           hasShop: finalUrl.includes("shop="),

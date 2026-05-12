@@ -63,6 +63,10 @@ export async function createBillingCheckSession({ admin, planId, returnUrl }) {
   }
 
   try {
+    if (!admin?.rest?.resources?.BillingCheck) {
+      console.warn('Shopify admin.rest.resources.BillingCheck not available, skipping billing check');
+      return { required: false };
+    }
     const response = await admin.rest.resources.BillingCheck.create({
       session: admin.rest.session,
       data: {
@@ -87,26 +91,33 @@ export async function createBillingSubscription({ admin, planId, returnUrl }) {
   }
 
   try {
+    if (!admin?.rest?.resources?.RecurringApplicationCharge) {
+      console.warn('Shopify admin.rest.resources.RecurringApplicationCharge not available, cannot create subscription');
+      return { success: false, error: 'Shopify API not available' };
+    }
     const response = await admin.rest.resources.RecurringApplicationCharge.create({
       session: admin.rest.session,
       data: {
-        name: `${plan.name} Plan`,
+        name: plan.name,
         price: plan.price,
-        trial_days: plan.trialDays,
-        test: process.env.NODE_ENV !== 'production',
-        return_url: returnUrl
+        return_url: returnUrl,
+        test: process.env.NODE_ENV !== 'production'
       }
     });
 
     return { success: true, subscriptionId: response.body.recurring_application_charge.id };
   } catch (error) {
-    console.error('Billing subscription error:', error);
+    console.error('Billing subscription creation error:', error);
     return { success: false, error: error.message };
   }
 }
 
 export async function cancelBillingSubscription({ admin, subscriptionId }) {
   try {
+    if (!admin?.rest?.resources?.RecurringApplicationCharge) {
+      console.warn('Shopify admin.rest.resources.RecurringApplicationCharge not available, cannot cancel subscription');
+      return { success: false, error: 'Shopify API not available' };
+    }
     await admin.rest.resources.RecurringApplicationCharge.delete({
       session: admin.rest.session,
       id: subscriptionId
@@ -125,22 +136,19 @@ export async function getBillingStatus({ admin, subscriptionId }) {
   }
 
   try {
+    if (!admin?.rest?.resources?.RecurringApplicationCharge) {
+      console.warn('Shopify admin.rest.resources.RecurringApplicationCharge not available, cannot check billing status');
+      return { status: 'free', active: false };
+    }
     const response = await admin.rest.resources.RecurringApplicationCharge.find({
       session: admin.rest.session,
       id: subscriptionId
     });
 
-    const charge = response.body.recurring_application_charge;
-    
-    return {
-      status: charge.status,
-      active: charge.status === 'active',
-      cancelled: charge.status === 'cancelled',
-      pending: charge.status === 'pending'
-    };
+    return { status: response.body.recurring_application_charge.status, active: true };
   } catch (error) {
-    console.error('Billing status error:', error);
-    return { status: 'unknown', active: false };
+    console.error('Billing status check error:', error);
+    return { status: 'free', active: false, error: error.message };
   }
 }
 
