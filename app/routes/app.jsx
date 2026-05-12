@@ -42,7 +42,7 @@ export const loader = async ({ request }) => {
   const headerKeys = Array.from(request.headers.keys());
 
   logAuthDebug("loader:start", {
-    url: url.toString(),
+    fullUrl: url.toString(),
     pathname: url.pathname,
     search: url.search,
     hostParam: hostParam || null,
@@ -52,6 +52,7 @@ export const loader = async ({ request }) => {
     hasAuthHeader: Boolean(authHeader),
     secFetchDest,
     headerKeys,
+    allParams: Object.fromEntries(url.searchParams),
   });
 
   try {
@@ -115,6 +116,21 @@ export default function App() {
 
   return (
     <AppProvider isEmbeddedApp apiKey={apiKey}>
+      <script
+        dangerouslySetInnerHTML={{
+          __html: `
+            const urlParams = new URLSearchParams(window.location.search);
+            const embedded = urlParams.get("embedded");
+            if (embedded === "1" && window.top === window.self) {
+              console.error("[embed-debug][CRITICAL-BREAKOUT]", {
+                message: "embedded=1 present but window.top===window.self - iframe context lost!",
+                currentUrl: window.location.href,
+                shopifyGlobal: window.shopify ? true : false,
+              });
+            }
+          `,
+        }}
+      />
       <AppBridgeDiagnostics apiKey={apiKey} host={host} shop={shop} />
       <NavMenu>
         <Link to="/app" rel="home" aria-label="Dashboard">

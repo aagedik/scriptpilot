@@ -11,11 +11,19 @@ const logAuthDebug = (stage, payload) => {
 
 export const loader = async ({ request }) => {
   const url = new URL(request.url);
+  const embedded = url.searchParams.get("embedded");
+  const host = url.searchParams.get("host");
+  const shop = url.searchParams.get("shop");
+  
   logAuthDebug("loader:start", {
     url: url.toString(),
     pathname: url.pathname,
     search: url.search,
     method: request.method,
+    embedded,
+    host,
+    shop,
+    allParams: Object.fromEntries(url.searchParams),
   });
 
   try {

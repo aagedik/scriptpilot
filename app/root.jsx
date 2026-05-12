@@ -19,15 +19,28 @@ export default function App() {
         <script
           dangerouslySetInnerHTML={{
             __html: `
+              const urlParams = new URLSearchParams(window.location.search);
+              const embedded = urlParams.get("embedded");
+              const topEqualsSelf = window.top === window.self;
+              const inIframe = window.self !== window.top;
+              
               console.log("[embed-debug][boot]", {
-                topEqualsSelf: window.top === window.self,
-                inIframe: window.self !== window.top,
+                topEqualsSelf: topEqualsSelf,
+                inIframe: inIframe,
                 location: window.location.href,
                 referrer: document.referrer || null,
                 shopifyGlobal: !!window.shopify,
                 appBridgeGlobal: !!window.appBridge,
+                embedded: embedded,
                 userAgent: navigator.userAgent.slice(0, 60),
               });
+
+              if (embedded === "1" && topEqualsSelf) {
+                console.error("[embed-debug][CRITICAL-BREAKOUT]", {
+                  message: "embedded=1 present but window.top===window.self - iframe context lost at boot!",
+                  currentUrl: window.location.href,
+                });
+              }
             `,
           }}
         />

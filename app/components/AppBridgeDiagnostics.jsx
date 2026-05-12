@@ -39,22 +39,32 @@ export default function AppBridgeDiagnostics({ apiKey, host, shop }) {
     const embeddedParam = urlParams?.get("embedded");
     const hostParam = urlParams?.get("host");
 
-    console.info(`${EMBED_LOG}[iframe-status]`, {
+    console.info(EMBED_LOG + "[iframe-status]", {
       inIframe,
       topEqualsSelf: typeof window !== "undefined" ? window.top === window.self : null,
       embeddedParam,
       hostParamPresent: Boolean(hostParam),
       routeCategory: inIframe ? "embedded" : "standalone",
+      currentUrl: typeof window !== "undefined" ? window.location.href : null,
+      referrer: typeof document !== "undefined" ? document.referrer : null,
     });
 
     if (!inIframe && embeddedParam === "1") {
-      console.error(`${EMBED_LOG}[breakout-detected]`, {
+      console.error(EMBED_LOG + "[breakout-detected]", {
         message: "App is NOT inside iframe but embedded=1 is present. iframe breakout occurred.",
+        currentUrl: window.location.href,
+        referrer: document.referrer,
+      });
+    }
+
+    if (!inIframe && embeddedParam !== "1") {
+      console.warn(EMBED_LOG + "[standalone-mode]", {
+        message: "App is in standalone mode (not in iframe, no embedded param)",
         currentUrl: window.location.href,
       });
     }
 
-    console.info(`${LOG}[mount]`, {
+    console.info(LOG + "[mount]", {
       apiKeyPresent: Boolean(apiKey),
       hostPresent: Boolean(host),
       shop,
@@ -67,7 +77,7 @@ export default function AppBridgeDiagnostics({ apiKey, host, shop }) {
       if (cancelled) return;
 
       if (!shopify) {
-        console.error(`${LOG}[app-bridge]`, {
+        console.error(LOG + "[app-bridge]", {
           status: "global_not_found",
           message: "window.shopify never appeared. App Bridge CDN script likely failed to load.",
         });
@@ -75,23 +85,23 @@ export default function AppBridgeDiagnostics({ apiKey, host, shop }) {
         return;
       }
 
-      console.info(`${LOG}[app-bridge]`, {
+      console.info(LOG + "[app-bridge]", {
         status: "initialized",
         hasIdToken: typeof shopify.idToken === "function",
         hasConfig: Boolean(shopify.config),
         configHost: shopify.config?.host ?? null,
         configShop: shopify.config?.shop ?? null,
-        configApiKey: shopify.config?.apiKey ? `${shopify.config.apiKey.slice(0, 6)}***` : null,
+        configApiKey: shopify.config?.apiKey ? shopify.config.apiKey.slice(0, 6) + "***" : null,
       });
 
       try {
         const token = typeof shopify.idToken === "function" ? await shopify.idToken() : null;
-        console.info(`${LOG}[session-token]`, {
+        console.info(LOG + "[session-token]", {
           present: Boolean(token),
-          sample: token ? `${token.slice(0, 12)}…` : null,
+          sample: token ? token.slice(0, 12) + "…" : null,
         });
       } catch (tokenError) {
-        console.error(`${LOG}[session-token:error]`, {
+        console.error(LOG + "[session-token:error]", {
           message: tokenError instanceof Error ? tokenError.message : String(tokenError),
         });
       }
@@ -99,14 +109,14 @@ export default function AppBridgeDiagnostics({ apiKey, host, shop }) {
       try {
         const probeUrl = "/app?__authProbe=1";
         const response = await fetch(probeUrl, { method: "GET" });
-        console.info(`${LOG}[fetch-probe]`, {
+        console.info(LOG + "[fetch-probe]", {
           url: probeUrl,
           status: response.status,
           note:
             "App Bridge v4 CDN script auto-attaches Authorization to same-origin fetches. The server log for this URL must show hasAuthHeader:true.",
         });
       } catch (probeError) {
-        console.error(`${LOG}[fetch-probe:error]`, {
+        console.error(LOG + "[fetch-probe:error]", {
           message: probeError instanceof Error ? probeError.message : String(probeError),
         });
       }
@@ -121,7 +131,7 @@ export default function AppBridgeDiagnostics({ apiKey, host, shop }) {
 
   useEffect(() => {
     if (status === "ready") {
-      console.info(`${LOG}[diagnostics]`, { status: "complete" });
+      console.info(LOG + "[diagnostics]", { status: "complete" });
     }
   }, [status]);
 

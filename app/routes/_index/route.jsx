@@ -156,9 +156,26 @@ export const loader = async ({ request }) => {
   const url = new URL(request.url);
   const embedded = url.searchParams.get("embedded");
   const host = url.searchParams.get("host");
+  const shop = url.searchParams.get("shop");
+
+  console.info("[route-debug][index-loader]", {
+    url: url.toString(),
+    pathname: url.pathname,
+    search: url.search,
+    embedded,
+    host,
+    shop,
+    allParams: Object.fromEntries(url.searchParams),
+    willRedirectToApp: Boolean(embedded === "1" || host),
+  });
 
   if (embedded === "1" || host) {
-    return redirect(`/app${url.search}`);
+    const redirectUrl = `/app${url.search}`;
+    console.info("[route-debug][index-redirect]", {
+      redirectUrl,
+      reason: embedded === "1" ? "embedded=1 detected" : "host param detected",
+    });
+    return redirect(redirectUrl);
   }
 
   return json({ showForm: Boolean(login) });

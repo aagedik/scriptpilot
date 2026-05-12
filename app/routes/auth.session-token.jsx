@@ -11,10 +11,12 @@ export const loader = async ({ request }) => {
 
   console.info(`${AUTH_DEBUG_PREFIX}[loader]`, {
     url: url.toString(),
+    fullShopifyReload: shopifyReload,
     hasShopifyReload: Boolean(shopifyReload),
     shop,
     host,
     embedded,
+    allParams: Object.fromEntries(url.searchParams),
   });
 
   if (!shopifyReload) {
@@ -41,24 +43,56 @@ export const loader = async ({ request }) => {
 <body>
   <script>
     (function() {
-      const LOG = "[bounce]";
+      const LOG = "[bounce-debug]";
       const reloadUrl = new URL(${JSON.stringify(shopifyReload)});
       const startTime = Date.now();
+      const searchParams = new URLSearchParams(window.location.search);
+      const embeddedParam = searchParams.get("embedded");
+      const hostParam = searchParams.get("host");
+      const shopParam = searchParams.get("shop");
 
-      console.log(LOG, "bounce page loaded", {
+      console.log(LOG, "bounce-page-loaded", {
+        currentUrl: window.location.href,
+        referrer: document.referrer || null,
         topEqualsSelf: window.top === window.self,
         inIframe: window.self !== window.top,
         reloadUrl: reloadUrl.toString(),
+        reloadUrlOrigin: reloadUrl.origin,
+        reloadUrlPathname: reloadUrl.pathname,
+        embeddedParam,
+        hostParam,
+        shopParam,
+        allReloadParams: Object.fromEntries(reloadUrl.searchParams),
         shopifyGlobal: !!window.shopify,
+        appBridgeGlobal: !!window.appBridge,
       });
+
+      if (embeddedParam === "1" && window.top === window.self) {
+        console.error(LOG, "CRITICAL-BREAKOUT-DETECTED", {
+          message: "embedded=1 is present but window.top===window.self - iframe context already lost!",
+          currentUrl: window.location.href,
+          reloadUrl: reloadUrl.toString(),
+        });
+      }
 
       function redirectWithToken(token) {
         reloadUrl.searchParams.set("id_token", token);
+        const finalUrl = reloadUrl.toString();
+
         console.log(LOG, "redirecting (iframe-safe)", {
-          url: reloadUrl.toString(),
+          finalUrl,
+          finalUrlOrigin: reloadUrl.origin,
+          finalUrlPathname: reloadUrl.pathname,
+          finalParams: Object.fromEntries(reloadUrl.searchParams),
+          hasEmbedded: finalUrl.includes("embedded="),
+          hasHost: finalUrl.includes("host="),
+          hasShop: finalUrl.includes("shop="),
           elapsedMs: Date.now() - startTime,
+          topEqualsSelfBeforeRedirect: window.top === window.self,
+          inIframeBeforeRedirect: window.self !== window.top,
         });
-        window.location.replace(reloadUrl.toString());
+
+        window.location.replace(finalUrl);
       }
 
       function waitAndRetry() {
