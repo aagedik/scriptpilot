@@ -9,6 +9,7 @@ export default function App() {
   return (
     <html>
       <head>
+        {/* ROOT_RENDERED_OK - root.jsx is being used */}
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width,initial-scale=1" />
         <link rel="preconnect" href="https://cdn.shopify.com/" />
