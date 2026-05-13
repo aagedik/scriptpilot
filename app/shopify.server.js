@@ -6,6 +6,34 @@ import {
 import { PrismaSessionStorage } from "@shopify/shopify-app-session-storage-prisma";
 import prisma from "./db.server";
 
+class TracingPrismaSessionStorage extends PrismaSessionStorage {
+  async storeSession(session) {
+    console.log("[SESSION-TRACE][storeSession] called", {
+      sessionId: session.id,
+      shop: session.shop,
+      isOnline: session.isOnline,
+      hasAccessToken: !!session.accessToken,
+    });
+    try {
+      const result = await super.storeSession(session);
+      console.log("[SESSION-TRACE][storeSession] success", {
+        sessionId: session.id,
+        shop: session.shop,
+        isOnline: session.isOnline,
+      });
+      return result;
+    } catch (error) {
+      console.error("[SESSION-TRACE][storeSession] error", {
+        sessionId: session.id,
+        shop: session.shop,
+        isOnline: session.isOnline,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
+  }
+}
+
 const shopify = shopifyApp({
   apiKey: process.env.SHOPIFY_API_KEY,
   apiSecretKey: process.env.SHOPIFY_API_SECRET || "",
@@ -13,7 +41,7 @@ const shopify = shopifyApp({
   scopes: process.env.SCOPES?.split(","),
   appUrl: process.env.SHOPIFY_APP_URL || "",
   authPathPrefix: "/auth",
-  sessionStorage: new PrismaSessionStorage(prisma),
+  sessionStorage: new TracingPrismaSessionStorage(prisma),
   future: {
     unstable_newEmbeddedAuthStrategy: true,
     expiringOfflineAccessTokens: true,
